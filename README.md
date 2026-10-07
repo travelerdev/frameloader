@@ -68,15 +68,15 @@ Every push and pull request runs `.github/workflows/build.yml`: typecheck, tests
 
 To ship a release:
 
-1. Open **Actions → Release → Run workflow** on `main`.
-2. Leave the version empty to release the version in `apps/desktop/package.json`, or type one (e.g. `0.2.0`).
-3. The workflow builds `main` with that version, publishes the `vX.Y.Z` GitHub release with the installers as the latest release, then commits the next patch version to `main`.
+1. On GitHub, go to **Releases → Draft a new release**.
+2. Create a new tag named `vX.Y.Z` (for example `v0.1.0`) targeting `main`, write the notes (or use **Generate release notes**), and publish.
+3. Publishing runs `.github/workflows/release.yml`, which builds that tag stamped as version `X.Y.Z` and attaches the installers to the release. It takes a few minutes. If it fails, re-run the workflow; uploads replace any partial ones.
 
-The workflow pushes that version bump straight to `main`. If `main` gets branch protection, allow GitHub Actions to push or change the last job to open a pull request.
+Nothing is pushed to `main`, so this works with branch protection. The version in `apps/desktop/package.json` is only what local and CI builds report; releases take their version from the tag.
 
 Builds are not code-signed yet. On macOS the app is ad-hoc signed, so the first launch needs right-click → Open (or `xattr -dr com.apple.quarantine /Applications/Frameloader.app`). Windows SmartScreen will warn until the installer is signed.
 
-Installed apps notice new releases on their own: they check GitHub's releases API and show a banner with a link. Nothing is downloaded or installed automatically, and Settings → Updates turns the check off.
+Installed apps notice new releases on their own: they check GitHub's releases API and show a banner with a link once a release has its installers attached. Nothing is downloaded or installed automatically, and Settings → Updates turns the check off.
 
 ## Website hosting (Cloudflare Workers)
 

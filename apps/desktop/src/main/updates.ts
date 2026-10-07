@@ -48,9 +48,11 @@ class Updates extends EventEmitter {
       } else if (!res.ok) {
         throw new Error(`GitHub answered HTTP ${res.status}`);
       } else {
-        const body = (await res.json()) as { tag_name?: string; html_url?: string; draft?: boolean; prerelease?: boolean };
+        const body = (await res.json()) as { tag_name?: string; html_url?: string; draft?: boolean; prerelease?: boolean; assets?: unknown[] };
         const latest = (body.tag_name ?? "").replace(/^v/i, "");
-        const available = !!latest && !body.draft && !body.prerelease && compareVersions(latest, current) > 0;
+        // A release is announced only once its installers are attached; the build takes a few minutes after publishing.
+        const ready = Array.isArray(body.assets) && body.assets.length > 0;
+        const available = !!latest && ready && !body.draft && !body.prerelease && compareVersions(latest, current) > 0;
         this.status = { current, latest, available, url: body.html_url, checkedAt: new Date().toISOString() };
         if (available) activity.info(`Frameloader ${latest} is available (you have ${current})`);
       }

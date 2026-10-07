@@ -2,7 +2,6 @@
 // The app's version lives in apps/desktop/package.json.
 //   node scripts/version.mjs get            -> prints the current version
 //   node scripts/version.mjs set 1.2.3      -> sets it
-//   node scripts/version.mjs next 1.2.3     -> prints 1.2.4 (the version after a release)
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -27,10 +26,7 @@ if (cmd === "get") {
   pkg.version = check(arg);
   writeFileSync(PKG, JSON.stringify(pkg, null, 2) + "\n");
   console.log(pkg.version);
-} else if (cmd === "next") {
-  const [, a, b, c] = check(arg ?? pkg.version).match(SEMVER);
-  console.log(`${a}.${b}.${Number(c) + 1}`);
 } else {
-  console.error("usage: version.mjs get | set X.Y.Z | next [X.Y.Z]");
+  console.error("usage: version.mjs get | set X.Y.Z");
   process.exit(1);
 }

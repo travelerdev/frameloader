@@ -1,19 +1,15 @@
 name: Release
 
-# Run from the Actions tab: "Release" → Run workflow (on main).
-# Builds the current head of main as the given version (default: the version
-# in apps/desktop/package.json), publishes it as the latest GitHub release with
-# the installers attached, then bumps main to the next patch version.
+# Create a release in GitHub (Releases → Draft a new release) with a new tag
+# like v1.2.3 on main, write the notes, and publish it. This workflow then
+# builds that tag as version 1.2.3 and attaches the installers to the release.
+# Nothing is pushed to main, so it works with branch protection.
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to release, e.g. 1.2.0. Leave empty to release the version in package.json."
-        type: string
-        default: ""
+  release:
+    types: [published]
 
 concurrency:
-  group: release
+  group: release-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 permissions:
@@ -21,39 +17,21 @@ permissions:
 
 jobs:
   prepare:
-    name: Pick version
+    name: Read version from tag
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
-      next: ${{ steps.v.outputs.next }}
-      sha: ${{ steps.v.outputs.sha }}
     steps:
-      - name: Only from main
-        if: github.ref != 'refs/heads/main'
-        run: |
-          echo "::error::Releases are cut from main. Pick main in the branch dropdown."
-          exit 1
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
       - id: v
         env:
-          INPUT_VERSION: ${{ inputs.version }}
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="${INPUT_VERSION:-$(node scripts/version.mjs get)}"
-          version="${version#v}"
-          node scripts/version.mjs next "$version" > /dev/null  # validates the format
-          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
-            echo "::error::v$version is already released. Pass a newer version."
+          if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Release tags must look like v1.2.3 (got \"$TAG\")."
             exit 1
           fi
-          {
-            echo "version=$version"
-            echo "next=$(node scripts/version.mjs next "$version")"
-            echo "sha=$(git rev-parse HEAD)"
-          } >> "$GITHUB_OUTPUT"
-          echo "Releasing v$version from $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          echo "Building ${TAG} as version ${BASH_REMATCH[1]}" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build
@@ -61,11 +39,11 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
-      ref: ${{ needs.prepare.outputs.sha }}
+      ref: refs/tags/${{ github.event.release.tag_name }}
 
-  publish:
-    name: Publish GitHub release
-    needs: [prepare, build]
+  attach:
+    name: Attach installers to the release
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,37 +53,11 @@ jobs:
           pattern: frameloader-*
           path: dist
           merge-multiple: true
-      - name: Create release
+      - name: Upload
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-          SHA: ${{ needs.prepare.outputs.sha }}
+          TAG: ${{ github.event.release.tag_name }}
         run: |
           ls -la dist
-          gh release create "v$VERSION" dist/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$SHA" \
-            --title "Frameloader $VERSION" \
-            --generate-notes \
-            --latest
-
-  bump:
-    name: Bump main to the next version
-    needs: [prepare, publish]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - name: Commit next version
-        env:
-          NEXT: ${{ needs.prepare.outputs.next }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          node scripts/version.mjs set "$NEXT"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Start $NEXT after releasing $VERSION"
-          git push origin HEAD:main
+          # --clobber so re-running a failed release replaces partial uploads.
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
