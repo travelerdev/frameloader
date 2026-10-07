@@ -121,7 +121,7 @@ function wireIpc(): void {
     ),
   );
 
-  ipcMain.handle("connection:discover", () => browse(2500));
+  ipcMain.handle("connection:discover", () => browse());
 
   ipcMain.handle("payload:inspect", async (_e, paths: string[]): Promise<PayloadInfo> => {
     discardAll();
