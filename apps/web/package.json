@@ -4,6 +4,10 @@
   "private": true,
   "description": "The Frameloader website.",
   "license": "MIT",
+  "author": {
+    "name": "Traveler Dev Ltd",
+    "email": "hi@traveler.dev"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
