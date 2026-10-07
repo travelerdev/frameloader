@@ -24,15 +24,15 @@
     "screenshots": "pnpm build && electron scripts/screenshot.cjs"
   },
   "devDependencies": {
-    "frameloader-tokens": "workspace:*",
     "@types/multicast-dns": "^7.2.4",
     "@types/node": "^24.0.0",
     "@types/ssh2": "^1.15.6",
     "@types/yauzl": "^2.10.3",
     "app-info-parser": "^1.1.6",
     "electron": "44.5.1",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^26.17.0",
     "esbuild": "^0.28.2",
+    "frameloader-tokens": "workspace:*",
     "multicast-dns": "^7.2.5",
     "ssh2": "^1.17.0",
     "typescript": "^7.0.2",
@@ -43,6 +43,5 @@
     "type": "git",
     "url": "https://github.com/travelerdev/frameloader.git",
     "directory": "apps/desktop"
-  },
-  "dependencies": {}
+  }
 }
