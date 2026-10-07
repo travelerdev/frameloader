@@ -54,7 +54,7 @@ pnpm dist:mac       # or dist:win / dist:linux
 
 The desktop app bundles all of its runtime dependencies into `dist/main.cjs`, so packages contain no `node_modules`.
 
-The renderer can be previewed in a normal browser with simulated data: serve `apps/desktop/dist/` and open `index.html?mock=connected` (also `fresh`, `empty`, `offline`, `nolepton`, `fail`). `pnpm --filter @frameloader/desktop screenshots` regenerates the website's screenshots from that mock, in light and dark.
+The renderer can be previewed in a normal browser with simulated data: serve `apps/desktop/dist/` and open `index.html?mock=connected` (also `fresh`, `empty`, `offline`, `nolepton`, `fail`). `pnpm --filter frameloader-desktop screenshots` regenerates the website's screenshots from that mock, in light and dark.
 
 `pnpm install` must be allowed to run the `electron` and `esbuild` build scripts (see `pnpm-workspace.yaml`). If Electron's binary is missing, run `node node_modules/electron/install.js`.
 
@@ -87,7 +87,7 @@ Workers Builds settings (Worker → Settings → Build):
 | Setting | Value |
 |---|---|
 | Root directory | `/` |
-| Build command | `pnpm install --frozen-lockfile --filter "@frameloader/web..." && pnpm build:web` |
+| Build command | `pnpm install --frozen-lockfile --filter "frameloader-web..." && pnpm build:web` |
 | Deploy command | `pnpm exec wrangler deploy` |
 | Preview command | `pnpm exec wrangler preview` |
 | Build variables | `PNPM_VERSION=11.24.0`, `SKIP_DEPENDENCY_INSTALL=1`, `ELECTRON_SKIP_BINARY_DOWNLOAD=1` |

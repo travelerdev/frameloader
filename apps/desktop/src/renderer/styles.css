@@ -1,4 +1,4 @@
-/* Color, type and shape tokens come from @frameloader/tokens (prepended at build). */
+/* Color, type and shape tokens come from frameloader-tokens (prepended at build). */
 :root { --titlebar: 0px; }
 body.mac { --titlebar: 38px; }
 

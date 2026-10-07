@@ -1,4 +1,4 @@
-@import "@frameloader/tokens/tokens.css";
+@import "frameloader-tokens/tokens.css";
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }

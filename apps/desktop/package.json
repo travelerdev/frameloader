@@ -1,5 +1,5 @@
 {
-  "name": "@frameloader/desktop",
+  "name": "frameloader-desktop",
   "productName": "Frameloader",
   "version": "0.0.1",
   "description": "Drop an APK, Windows app, or Linux build onto your Steam Frame and it shows up in your Steam library.",
@@ -21,7 +21,7 @@
     "screenshots": "pnpm build && electron scripts/screenshot.cjs"
   },
   "devDependencies": {
-    "@frameloader/tokens": "workspace:*",
+    "frameloader-tokens": "workspace:*",
     "@types/multicast-dns": "^7.2.4",
     "@types/node": "^24.0.0",
     "@types/ssh2": "^1.15.6",
@@ -86,7 +86,8 @@
         "deb"
       ],
       "category": "Utility",
-      "artifactName": "Frameloader-linux-${arch}.${ext}"
+      "artifactName": "Frameloader-linux-${arch}.${ext}",
+      "executableName": "frameloader"
     },
     "electronVersion": "44.5.1"
   },

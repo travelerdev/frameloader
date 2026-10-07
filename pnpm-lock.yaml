@@ -14,9 +14,6 @@ importers:
 
   apps/desktop:
     devDependencies:
-      '@frameloader/tokens':
-        specifier: workspace:*
-        version: link:../../packages/tokens
       '@types/multicast-dns':
         specifier: ^7.2.4
         version: 7.2.4
@@ -41,6 +38,9 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      frameloader-tokens:
+        specifier: workspace:*
+        version: link:../../packages/tokens
       multicast-dns:
         specifier: ^7.2.5
         version: 7.2.5
@@ -56,7 +56,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@frameloader/tokens':
+      frameloader-tokens:
         specifier: workspace:*
         version: link:../../packages/tokens
     devDependencies:

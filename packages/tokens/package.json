@@ -1,5 +1,5 @@
 {
-  "name": "@frameloader/tokens",
+  "name": "frameloader-tokens",
   "version": "0.0.1",
   "private": true,
   "description": "Shared color, type and shape tokens for the Frameloader app and website.",

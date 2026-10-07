@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 
 const require = createRequire(import.meta.url);
-const TOKENS = require.resolve("@frameloader/tokens/tokens.css");
+const TOKENS = require.resolve("frameloader-tokens/tokens.css");
 
 const watch = process.argv.includes("--watch");
 const prod = process.env.NODE_ENV === "production";

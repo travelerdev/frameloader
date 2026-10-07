@@ -10,7 +10,7 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@frameloader/web", "dev", "--strictPort"],
+      "runtimeArgs": ["--filter", "frameloader-web", "dev", "--strictPort"],
       "port": 5180
     }
   ]
