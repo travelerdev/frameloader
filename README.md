@@ -74,7 +74,7 @@ To ship a release:
 
 Nothing is pushed to `main`, so this works with branch protection. The version in `apps/desktop/package.json` is only what local and CI builds report; releases take their version from the tag.
 
-Builds are not code-signed yet. On macOS the app is ad-hoc signed, so the first launch needs right-click → Open (or `xattr -dr com.apple.quarantine /Applications/Frameloader.app`). Windows SmartScreen will warn until the installer is signed.
+**Signing.** Release builds of the Mac app are signed with a Developer ID certificate and notarized, so they open normally. The certificate and the App Store Connect notarization key live only in the `release-signing` GitHub environment as `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. That environment only accepts `v*` tags and needs approval, so the release run pauses until you approve it. Push and pull-request builds are ad-hoc signed; to open one on macOS 15 or later, use System Settings → Privacy & Security → Open Anyway, or run `xattr -dr com.apple.quarantine /Applications/Frameloader.app`. Windows builds are unsigned, so SmartScreen warns before the installer runs.
 
 Installed apps notice new releases on their own: they check GitHub's releases API and show a banner with a link once a release has its installers attached. Nothing is downloaded or installed automatically, and Settings → Updates turns the check off.
 

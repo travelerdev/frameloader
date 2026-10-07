@@ -14,10 +14,10 @@
     "start": "pnpm build && electron .",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "pnpm build && node --test dist/test/*.test.cjs",
-    "dist": "pnpm build && electron-builder --publish never",
-    "dist:mac": "pnpm build && electron-builder --mac --arm64 --publish never",
-    "dist:win": "pnpm build && electron-builder --win --x64 --publish never",
-    "dist:linux": "pnpm build && electron-builder --linux --x64 --arm64 --publish never",
+    "dist": "pnpm build && electron-builder --config electron-builder.config.cjs --publish never",
+    "dist:mac": "pnpm build && electron-builder --config electron-builder.config.cjs --mac --arm64 --publish never",
+    "dist:win": "pnpm build && electron-builder --config electron-builder.config.cjs --win --x64 --publish never",
+    "dist:linux": "pnpm build && electron-builder --config electron-builder.config.cjs --linux --x64 --arm64 --publish never",
     "screenshots": "pnpm build && electron scripts/screenshot.cjs"
   },
   "devDependencies": {
@@ -34,62 +34,6 @@
     "ssh2": "^1.17.0",
     "typescript": "^7.0.2",
     "yauzl": "^3.2.0"
-  },
-  "build": {
-    "appId": "dev.traveler.frameloader",
-    "productName": "Frameloader",
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      "dist/**/*",
-      "package.json",
-      "!dist/test/**",
-      "!dist/**/*.map"
-    ],
-    "extraResources": [
-      {
-        "from": "vendor/devkit-utils",
-        "to": "devkit-utils",
-        "filter": [
-          "**/*",
-          "!**/__pycache__/**"
-        ]
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.utilities",
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "artifactName": "Frameloader-mac-${arch}.${ext}",
-      "identity": "-",
-      "hardenedRuntime": false
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ],
-      "artifactName": "Frameloader-win-${arch}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "category": "Utility",
-      "artifactName": "Frameloader-linux-${arch}.${ext}",
-      "executableName": "frameloader"
-    },
-    "electronVersion": "44.5.1"
   },
   "homepage": "https://www.frameloader.com",
   "repository": {
