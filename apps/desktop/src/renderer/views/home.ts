@@ -40,7 +40,7 @@ export function topbar(s: State): HTMLElement {
   return h(
     "div",
     { class: "topbar" },
-    h("div", { class: "brand" }, h("span", { class: "logo" }, icon("drop")), "Frameloader"),
+    h("div", { class: "brand" }, h("img", { class: "logo", src: "logo.png", alt: "" }), "Frameloader"),
     h(
       "div",
       { class: "row", style: "align-items: flex-start; gap: 6px" },
