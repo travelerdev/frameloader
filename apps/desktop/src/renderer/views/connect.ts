@@ -2,7 +2,7 @@ import { h, icon } from "../dom";
 
 const TERMS_URL = "https://www.frameloader.com/terms.html";
 import { store, type State } from "../state";
-import { cancelPair, connectSaved, connectWithPassword, pair, useDiscovered } from "../actions";
+import { cancelPair, connectSaved, connectWithPassword, openSettings, pair, useDiscovered } from "../actions";
 
 export function connectView(s: State): HTMLElement {
   const f = s.connectForm;
@@ -146,7 +146,9 @@ export function connectView(s: State): HTMLElement {
 
   const brand = h("div", { class: "brand brand-lg" }, h("span", { class: "logo" }, icon("drop")), "Frameloader");
 
-  return h("div", { class: "main" }, h("div", { class: "center" }, brand, card, checklist));
+  const settingsBtn = h("button", { class: "btn sm quiet corner", "aria-label": "Settings", title: "Settings", onclick: () => openSettings() }, icon("settings"));
+
+  return h("div", { class: "main" }, settingsBtn, h("div", { class: "center" }, brand, card, checklist));
 }
 
 function step(n: number, title: string, text: string): HTMLElement {

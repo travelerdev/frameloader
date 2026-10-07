@@ -1,0 +1,111 @@
+name: Build
+
+# Every push and pull request: check the code, then build installers for each
+# platform and attach them to the run as artifacts. The release workflow calls
+# this same file with a version to stamp into the app.
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]
+  pull_request:
+  workflow_call:
+    inputs:
+      version:
+        description: Version to stamp into the app (e.g. 1.2.3). Empty keeps package.json's.
+        type: string
+        default: ""
+      ref:
+        description: Commit to build.
+        type: string
+        default: ""
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ inputs.ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' && !inputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, test, build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build:web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: website
+          path: apps/web/dist
+          if-no-files-found: error
+
+  package:
+    name: Package (${{ matrix.name }})
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            args: --mac --arm64 --x64
+          - name: Windows
+            os: windows-latest
+            args: --win --x64
+          - name: Linux x64
+            os: ubuntu-latest
+            args: --linux --x64
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            args: --linux --arm64
+            system_fpm: true
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Stamp version
+        if: inputs.version != ''
+        run: node scripts/version.mjs set "${{ inputs.version }}"
+      - name: Install fpm (arm64 Linux has no prebuilt one)
+        if: matrix.system_fpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential rpm
+          sudo gem install --no-document fpm
+      - name: Build installers
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          USE_SYSTEM_FPM: ${{ matrix.system_fpm && 'true' || '' }}
+          # Builds are unsigned for now; don't go looking for certificates.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          pnpm build
+          pnpm exec electron-builder ${{ matrix.args }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frameloader-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          if-no-files-found: error

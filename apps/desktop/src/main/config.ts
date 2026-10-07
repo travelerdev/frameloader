@@ -2,9 +2,11 @@
 // Passwords are stored separately, encrypted with Electron's safeStorage.
 import { app, safeStorage } from "electron";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import type { DeviceProfile } from "../shared/ipc";
+import type { AppSettings, DeviceProfile } from "../shared/ipc";
+
+export const DEFAULT_SETTINGS: AppSettings = { developerTools: false, checkForUpdates: true };
 
 interface ConfigFile {
   devices: DeviceProfile[];
@@ -13,6 +15,7 @@ interface ConfigFile {
   knownHosts: Record<string, string>;
   /** Global compat tool overrides, e.g. { lepton: "lepton-stable" }. */
   compatToolOverrides: Record<string, string>;
+  settings?: Partial<AppSettings>;
 }
 
 interface SecretsFile {
@@ -34,11 +37,16 @@ function readJson<T>(file: string, fallback: T): T {
   }
 }
 
-function writeJson(file: string, value: unknown): void {
-  const tmp = file + ".tmp";
-  writeFileSync(tmp, JSON.stringify(value, null, 2));
-  writeFileSync(file, readFileSync(tmp));
-  unlinkSync(tmp);
+/** Write via a temp file and rename, so a crash mid-write never leaves a half-written file. */
+export function writeJson(file: string, value: unknown, mode = 0o600): void {
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, JSON.stringify(value, null, 2), { mode });
+    renameSync(tmp, file);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
 }
 
 class Config {
@@ -183,6 +191,17 @@ class Config {
       d.hasSavedPassword = false;
       this.save(c);
     }
+  }
+
+  settings(): AppSettings {
+    return { ...DEFAULT_SETTINGS, ...(this.load().settings ?? {}) };
+  }
+
+  updateSettings(patch: Partial<AppSettings>): AppSettings {
+    const c = this.load();
+    c.settings = { ...this.settings(), ...patch };
+    this.save(c);
+    return this.settings();
   }
 
   keyPath(): string {

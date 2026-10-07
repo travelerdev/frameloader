@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { join } from "node:path";
-import type { InstallRequest, PairRequest, PasswordConnectRequest, PayloadInfo, RuntimeOption, TitleInfo } from "../shared/ipc";
+import type { AppSettings, InstallRequest, PairRequest, PasswordConnectRequest, PayloadInfo, RuntimeOption, TitleInfo } from "../shared/ipc";
 import { activity } from "./activity";
 import { config } from "./config";
 import { friendlyError } from "./errors";
@@ -12,6 +12,7 @@ import { requestLeptonInstall } from "./preflight";
 import { runtimeOptions } from "./runtimes";
 import { session } from "./session";
 import { getTitles, launchTitle, removeTitle, stopTitle } from "./titles";
+import { updates } from "./updates";
 
 let win: BrowserWindow | null = null;
 let titlesCache: TitleInfo[] = [];
@@ -40,8 +41,14 @@ function createWindow(): void {
   });
   win.loadFile(join(__dirname, "index.html"));
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/.test(url)) shell.openExternal(url);
+    if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: "deny" };
+  });
+  // The window only ever shows our own page. Web links open in the browser;
+  // anything else (a stray link, a dropped file the page didn't catch) is ignored.
+  win.webContents.on("will-navigate", (event, url) => {
+    event.preventDefault();
+    if (/^https?:/.test(url)) void shell.openExternal(url);
   });
   win.on("closed", () => {
     win = null;
@@ -172,9 +179,33 @@ function wireIpc(): void {
     ),
   );
 
-  ipcMain.handle("logcat:start", (_e, id: string) => ok(logcat.start(session.require(), titleOrThrow(id))));
+  ipcMain.handle("logcat:start", (_e, id: string) =>
+    ok(
+      (async () => {
+        if (!config.settings().developerTools) throw new Error("Turn on developer tools in Settings to see logs.");
+        await logcat.start(session.require(), titleOrThrow(id));
+      })(),
+    ),
+  );
   ipcMain.handle("logcat:stop", () => logcat.stop());
   ipcMain.handle("activity:recent", () => activity.recent());
+
+  ipcMain.handle("settings:get", () => config.settings());
+  ipcMain.handle("settings:set", (_e, patch: Partial<AppSettings>) => {
+    const clean: Partial<AppSettings> = {};
+    if (typeof patch.developerTools === "boolean") clean.developerTools = patch.developerTools;
+    if (typeof patch.checkForUpdates === "boolean") clean.checkForUpdates = patch.checkForUpdates;
+    const next = config.updateSettings(clean);
+    if (!next.developerTools) logcat.stop();
+    if ("checkForUpdates" in clean) {
+      if (next.checkForUpdates) updates.start();
+      else updates.stop();
+    }
+    return next;
+  });
+  ipcMain.handle("updates:status", () => updates.status);
+  ipcMain.handle("updates:check", () => updates.check());
+  ipcMain.handle("app:version", () => app.getVersion());
 }
 
 function wireEvents(): void {
@@ -182,6 +213,7 @@ function wireEvents(): void {
   session.on("state", (state) => send("connection", state));
   logcat.on("line", (l) => send("logcat", l));
   logcat.on("ended", (l) => send("logcat:ended", l));
+  updates.on("status", (s) => send("update", s));
 }
 
 app.setName("Frameloader");
@@ -189,6 +221,7 @@ app.whenReady().then(() => {
   wireIpc();
   wireEvents();
   createWindow();
+  updates.start();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

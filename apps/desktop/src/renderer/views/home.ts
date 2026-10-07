@@ -2,7 +2,7 @@ import { formatBytes, timeAgo } from "../../shared/format";
 import type { TitleInfo } from "../../shared/ipc";
 import { h, icon, kindIcon } from "../dom";
 import { store, type State } from "../state";
-import { disconnect, installLepton, launchTitle, openPanel, pickFiles, refreshTitles, removeTitle, retryConnection } from "../actions";
+import { disconnect, installLepton, launchTitle, openPanel, openSettings, pickFiles, refreshTitles, removeTitle, retryConnection } from "../actions";
 import { reviewView } from "./review";
 import { installView } from "./install";
 
@@ -32,6 +32,7 @@ export function topbar(s: State): HTMLElement {
         s.devices.length > 1 ? h("div", { class: "sep" }) : null,
         h("button", { onclick: () => store.set({ devicesSheet: true, menuOpen: false }) }, icon("plus"), "Manage headsets"),
         h("button", { onclick: () => void refreshTitles() }, icon("refresh"), "Refresh"),
+        h("button", { onclick: () => openSettings() }, icon("settings"), "Settings"),
         h("div", { class: "sep" }),
         h("button", { class: "danger", onclick: () => void disconnect() }, icon("logout"), "Disconnect"),
       )
@@ -41,6 +42,10 @@ export function topbar(s: State): HTMLElement {
     { class: "topbar" },
     h("div", { class: "brand" }, h("span", { class: "logo" }, icon("drop")), "Frameloader"),
     h(
+      "div",
+      { class: "row", style: "align-items: flex-start; gap: 6px" },
+      h("button", { class: "btn sm quiet", "aria-label": "Settings", title: "Settings", onclick: () => openSettings() }, icon("settings")),
+      h(
       "div",
       { class: "device-chip" },
       h(
@@ -53,6 +58,7 @@ export function topbar(s: State): HTMLElement {
       ),
       runtimeChips,
       menu,
+      ),
     ),
   );
 }
@@ -128,7 +134,7 @@ function titleRow(s: State, t: TitleInfo, offline: boolean): HTMLElement {
       "div",
       { class: "actions" },
       h("button", { class: "btn sm", disabled: offline || s.busy.has(`launch:${t.gameId}`), onclick: () => void launchTitle(t.gameId) }, s.busy.has(`launch:${t.gameId}`) ? h("span", { class: "spinner" }) : icon("play"), "Play"),
-      t.kind === "apk" ? h("button", { class: "btn sm quiet", disabled: offline, onclick: () => openPanel(t.gameId, "logs") }, icon("terminal"), "Logs") : null,
+      t.kind === "apk" && s.settings.developerTools ? h("button", { class: "btn sm quiet", disabled: offline, onclick: () => openPanel(t.gameId, "logs") }, icon("terminal"), "Logs") : null,
       h("button", { class: "btn sm quiet", "aria-label": "More", onclick: (e: Event) => { e.stopPropagation(); store.set({ rowMenu: menuOpen ? undefined : t.gameId, menuOpen: false }); } }, icon("more")),
       menuOpen
         ? h(

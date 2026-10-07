@@ -1,12 +1,13 @@
 import { consumeScrollTop, h, withFocusRestore } from "./dom";
 import { api, isMock } from "./api";
 import { store, type State } from "./state";
-import { bootstrap, closePanel, inspectPaths, startDiscovery, stopDiscovery } from "./actions";
+import { bootstrap, closePanel, closeSettings, inspectPaths, startDiscovery, stopDiscovery } from "./actions";
 import { connectView } from "./views/connect";
 import { homeView, topbar } from "./views/home";
 import { panelView } from "./views/panel";
 import { devicesView } from "./views/devices";
 import { drawerView } from "./views/drawer";
+import { settingsView, updateBanner } from "./views/settings";
 
 const root = document.getElementById("app")!;
 if (navigator.platform.toLowerCase().includes("mac")) document.body.classList.add("mac");
@@ -24,18 +25,22 @@ function render(s: State): void {
   withFocusRestore(root, () => {
     root.replaceChildren();
     root.appendChild(h("div", { class: "titlebar-drag" }));
+    const banner = updateBanner(s);
     if (showConnect(s)) {
+      if (banner) root.appendChild(banner);
       root.appendChild(connectView(s));
       if (s.connection.status === "disconnected") startDiscovery();
       else stopDiscovery();
     } else {
       stopDiscovery();
       root.appendChild(topbar(s));
+      if (banner) root.appendChild(banner);
       root.appendChild(homeView(s));
-      root.appendChild(drawerView(s));
+      if (s.settings.developerTools) root.appendChild(drawerView(s));
     }
     if (s.panel) for (const el of panelView(s)) root.appendChild(el);
     if (s.devicesSheet) for (const el of devicesView(s)) root.appendChild(el);
+    if (s.settingsOpen) for (const el of settingsView(s)) root.appendChild(el);
     if (s.toast) root.appendChild(h("div", { class: `notice ${s.toast.kind}`, "data-anim": "toast", style: "position:fixed;left:50%;bottom:48px;transform:translateX(-50%);z-index:40;box-shadow:0 8px 24px rgba(16,24,40,.15);max-width:min(560px,90vw)" }, s.toast.text));
     if (isMock && !new URLSearchParams(location.search).has("shot")) root.appendChild(h("div", { class: "chip warn", style: "position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:50" }, "Preview mode: no headset, simulated data"));
     // Entrance animations only when an element first appears, not on every re-render.
@@ -75,7 +80,8 @@ window.addEventListener("drop", (e) => {
 });
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (store.state.panel) closePanel();
+    if (store.state.settingsOpen) closeSettings();
+    else if (store.state.panel) closePanel();
     else if (store.state.devicesSheet) store.set({ devicesSheet: false });
     else if (store.state.menuOpen || store.state.rowMenu) store.set({ menuOpen: false, rowMenu: undefined });
   }

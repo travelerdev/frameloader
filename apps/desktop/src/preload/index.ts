@@ -39,6 +39,15 @@ const api: FrameloaderApi = {
   activity: {
     recent: () => ipcRenderer.invoke("activity:recent"),
   },
+  settings: {
+    get: () => ipcRenderer.invoke("settings:get"),
+    set: (patch) => ipcRenderer.invoke("settings:set", patch),
+  },
+  updates: {
+    status: () => ipcRenderer.invoke("updates:status"),
+    check: () => ipcRenderer.invoke("updates:check"),
+  },
+  appVersion: () => ipcRenderer.invoke("app:version"),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   on<K extends keyof EventMap>(event: K, cb: (payload: EventMap[K]) => void): () => void {
     const handler = (_e: Electron.IpcRendererEvent, payload: EventMap[K]) => cb(payload);

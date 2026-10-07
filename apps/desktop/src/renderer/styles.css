@@ -117,7 +117,7 @@ p { margin: 0; }
 
 /* Device chip menu */
 .device-chip { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; position: relative; }
-.device-chip .btn { font-weight: 500; }
+.device-chip .btn { font-weight: 500; white-space: nowrap; }
 .device-chip .runtimes { display: flex; gap: 6px; }
 .menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 220px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12); padding: 6px; z-index: 20; display: flex; flex-direction: column; }
 .menu button { text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
@@ -214,3 +214,11 @@ details.advanced .stack { margin-top: 12px; padding-top: 12px; border-top: 1px s
 .dl dt { color: var(--text-2); }
 .dl dd { margin: 0; word-break: break-all; }
 .anim-in { animation: fade 150ms; }
+
+/* Settings, update banner */
+.sep-line { height: 1px; background: var(--border); }
+.panel-body section h3 { font-size: 14px; }
+.update-bar { display: flex; align-items: center; gap: 10px; padding: 8px 20px; background: var(--accent-soft); border-bottom: 1px solid var(--border); font-size: 13.5px; flex: none; }
+.update-bar svg { color: var(--accent); }
+.main { position: relative; }
+.btn.corner { position: absolute; top: 12px; right: 16px; }

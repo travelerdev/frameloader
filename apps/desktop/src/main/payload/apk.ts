@@ -86,18 +86,32 @@ function str(v: unknown): string {
   return "";
 }
 
+// app-info-parser logs "Not sure what to do with typed value…" for float
+// attributes. We silence console.log while it runs, one parse at a time, so two
+// overlapping parses can never leave console.log swapped out.
+let parseQueue: Promise<unknown> = Promise.resolve();
+
+function parseManifest(path: string): Promise<Record<string, unknown>> {
+  const run = async () => {
+    const origLog = console.log;
+    console.log = () => undefined;
+    try {
+      return await new AppInfoParser(path).parse();
+    } finally {
+      console.log = origLog;
+    }
+  };
+  const next = parseQueue.then(run, run);
+  parseQueue = next.catch(() => undefined);
+  return next;
+}
+
 export async function inspectApk(path: string): Promise<ApkFacts> {
   let manifest: Record<string, unknown>;
-  // app-info-parser logs "Not sure what to do with typed value…" for float attributes; it's noise.
-  const origLog = console.log;
-  console.log = () => undefined;
   try {
-    manifest = await new AppInfoParser(path).parse();
+    manifest = await parseManifest(path);
   } catch (e) {
-    console.log = origLog;
     throw new Error(`Couldn't read the APK's manifest (${(e as Error).message || "unknown error"}).`);
-  } finally {
-    console.log = origLog;
   }
   const entries = await listZipEntries(path);
   const names = entries.map((e) => e.name);

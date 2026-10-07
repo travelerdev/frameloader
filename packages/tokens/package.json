@@ -1,11 +1,13 @@
 {
   "name": "@frameloader/tokens",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Shared color, type and shape tokens for the Frameloader app and website.",
   "license": "MIT",
   "exports": {
     "./tokens.css": "./tokens.css"
   },
-  "files": ["tokens.css"]
+  "files": [
+    "tokens.css"
+  ]
 }

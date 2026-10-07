@@ -60,13 +60,30 @@ The renderer can be previewed in a normal browser with simulated data: serve `ap
 
 ## Privacy
 
-Frameloader has no analytics, telemetry, crash reporting, accounts or update checks. Its only network connections are to your headset on your local network: SSH, Valve's devkit pairing service on port 32000, and mDNS discovery. A remembered password is encrypted with the operating system's secure storage. The website loads no third-party scripts, fonts or cookies.
+Frameloader has no analytics, telemetry, crash reporting or accounts. It connects to your headset on your local network: SSH, Valve's devkit pairing service on port 32000, and mDNS discovery. The only other request is an update check: twice a day it asks GitHub's public releases API for the latest version number, sending nothing but the app version in its User-Agent. It never downloads anything, and Settings → Updates turns it off. A remembered password is encrypted with the operating system's secure storage. The website loads no third-party scripts, fonts or cookies.
+
+## Builds and releases
+
+Every push and pull request runs `.github/workflows/build.yml`: typecheck, tests, the website build, then installers for macOS (arm64 and x64), Windows x64, and Linux x64 and arm64. The installers are attached to the run as artifacts.
+
+To ship a release:
+
+1. Open **Actions → Release → Run workflow** on `main`.
+2. Leave the version empty to release the version in `apps/desktop/package.json`, or type one (e.g. `0.2.0`).
+3. The workflow builds `main` with that version, publishes the `vX.Y.Z` GitHub release with the installers as the latest release, then commits the next patch version to `main`.
+
+The workflow pushes that version bump straight to `main`. If `main` gets branch protection, allow GitHub Actions to push or change the last job to open a pull request.
+
+Builds are not code-signed yet. On macOS the app is ad-hoc signed, so the first launch needs right-click → Open (or `xattr -dr com.apple.quarantine /Applications/Frameloader.app`). Windows SmartScreen will warn until the installer is signed.
+
+Installed apps notice new releases on their own: they check GitHub's releases API and show a banner with a link. Nothing is downloaded or installed automatically, and Settings → Updates turns the check off.
 
 ## Troubleshooting
 
 - **"Couldn't find frame.local."** Frameloader resolves names itself over mDNS, then the OS resolver, then by browsing for the devkit service, then the last known IP. If all fail: the Frame is asleep (it drops off the network), Developer Mode is off, or the network blocks multicast (guest/isolated Wi-Fi). Typing the IP from Quick Settings always works.
 - **Pairing says the headset didn't answer.** Steam must be sitting on the Pair new host screen while Frameloader asks.
 - **"Steam isn't running on the headset."** Registration needs the Steam client up; put the headset on or wake it and try again.
+- **Logs.** Settings → Developer tools adds a Logs tab for Android titles and an activity log of every command sent to the headset.
 - **A 2D Android app launches but nothing shows.** Reinstall with "Show a 2D window" on (Advanced).
 - **Lepton missing.** Click Install next to the Lepton chip (it asks Steam to install app 3056000); confirm on the headset.
 - **Compat tool alias.** Valve's current scripts expect `lepton`. If your firmware wants a different name (older builds used `fauxdroid`), add `"compatToolOverrides": {"lepton": "lepton-stable"}` to Frameloader's `config.json` in its user-data folder.
@@ -77,4 +94,4 @@ Frameloader has no analytics, telemetry, crash reporting, accounts or update che
 - [Lepton](https://gitlab.steamos.cloud/frame-public/lepton) (MIT) for documenting how Android titles are launched.
 - [Frame Control](https://github.com/saphid/frame-control) (MIT) for field notes that verified each runtime on real hardware.
 
-MIT licensed. If Frameloader saves you some time, you can [buy me a coffee](https://buymeacoffee.com/travelerdev).
+MIT licensed, provided as is with no warranty; see the [terms of use](https://www.frameloader.com/terms.html). If Frameloader saves you some time, you can [buy me a coffee](https://buymeacoffee.com/travelerdev).

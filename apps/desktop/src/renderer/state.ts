@@ -1,4 +1,4 @@
-import type { ConnectionState, DeviceProfile, DiscoveredFrame, InstallProgress, InstallResult, InstallStep, LogLine, PayloadInfo, RuntimeId, RuntimeOption, TitleInfo } from "../shared/ipc";
+import type { AppSettings, ConnectionState, DeviceProfile, DiscoveredFrame, InstallProgress, InstallResult, InstallStep, PayloadInfo, RuntimeId, RuntimeOption, TitleInfo, UpdateInfo } from "../shared/ipc";
 
 export interface ConnectForm {
   host: string;
@@ -33,7 +33,6 @@ export interface InstallState {
 export interface PanelState {
   gameId: string;
   tab: "details" | "logs";
-  logs: string[];
   streaming: boolean;
   confirmRemove: boolean;
   error?: string;
@@ -52,8 +51,13 @@ export interface State {
   install?: InstallState;
   panel?: PanelState;
   devicesSheet: boolean;
-  activity: LogLine[];
   activityOpen: boolean;
+  settings: AppSettings;
+  settingsOpen: boolean;
+  update?: UpdateInfo;
+  updateDismissed?: string;
+  checkingUpdate: boolean;
+  version: string;
   menuOpen: boolean;
   rowMenu?: string;
   dragOver: boolean;
@@ -73,8 +77,11 @@ export const initialState: State = {
   titlesLoaded: false,
   runtimes: [],
   devicesSheet: false,
-  activity: [],
   activityOpen: false,
+  settings: { developerTools: false, checkForUpdates: true },
+  settingsOpen: false,
+  checkingUpdate: false,
+  version: "",
   menuOpen: false,
   dragOver: false,
   busy: new Set(),

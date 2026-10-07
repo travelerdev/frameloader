@@ -4,21 +4,46 @@ import { toGameId } from "../shared/gameid";
 import { api } from "./api";
 import { setBusy, store, toast, type ReviewForm } from "./state";
 import { requestScrollTop } from "./dom";
+import { LivePane } from "./livepane";
+import type { AppSettings, LogLine } from "../shared/ipc";
+
+/** Every command sent to the headset (developer tools). Lives outside the store. */
+export const activityPane = new LivePane(2000, "activity");
+/** The open title's Android log. Recreated per title. */
+export let logPane = new LivePane(3000, "logcat");
+
+function fmtLine(l: LogLine): string {
+  const t = new Date(l.ts).toLocaleTimeString([], { hour12: false });
+  return `${t}  ${l.level === "cmd" ? "$ " : ""}${l.text}`;
+}
 
 export async function bootstrap(): Promise<void> {
-  const [devices, connection, activity] = await Promise.all([api.devices.list(), api.connection.state(), api.activity.recent()]);
-  store.set({ devices, connection, activity });
+  const [devices, connection, activity, settings, version, update] = await Promise.all([
+    api.devices.list(),
+    api.connection.state(),
+    api.activity.recent(),
+    api.settings.get(),
+    api.appVersion(),
+    api.updates.status(),
+  ]);
+  for (const l of activity) activityPane.append(fmtLine(l), l.level);
+  store.set({ devices, connection, settings, version, update });
   api.on("connection", (connection) => {
     store.set((s) => ({ connection, titlesLoaded: connection.status === "connected" ? s.titlesLoaded : false }));
     if (connection.status === "connected") void api.devices.list().then((devices) => store.set({ devices }));
   });
-  api.on("log", (line) => store.set((s) => ({ activity: [...s.activity.slice(-999), line] })));
+  api.on("log", (line) => activityPane.append(fmtLine(line), line.level));
+  api.on("update", (update) => store.set({ update }));
   api.on("titles", (titles) => store.set({ titles, titlesLoaded: true }));
   api.on("install:progress", (p) => onInstallProgress(p));
-  api.on("logcat", ({ gameId, line }) =>
-    store.set((s) => (s.panel && s.panel.gameId === gameId && !s.panel.paused ? { panel: { ...s.panel, logs: [...s.panel.logs.slice(-2999), line] } } : {})),
-  );
-  api.on("logcat:ended", ({ gameId, reason }) => store.set((s) => (s.panel && s.panel.gameId === gameId ? { panel: { ...s.panel, streaming: false, logs: [...s.panel.logs, `— log stream ${reason} —`] } } : {})));
+  api.on("logcat", ({ gameId, line }) => {
+    if (store.state.panel?.gameId === gameId) logPane.append(line);
+  });
+  api.on("logcat:ended", ({ gameId, reason }) => {
+    if (store.state.panel?.gameId !== gameId) return;
+    logPane.append(`— log stream ${reason} —`, "info");
+    setPanel({ streaming: false });
+  });
   // Auto-connect to the last headset.
   const last = devices.find((d) => d.lastSeen) ? [...devices].sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? ""))[0] : devices[0];
   if (last && connection.status === "disconnected") {
@@ -216,7 +241,9 @@ export async function removeTitle(gameId: string): Promise<void> {
 }
 
 export function openPanel(gameId: string, tab: "details" | "logs" = "details"): void {
-  store.set({ panel: { gameId, tab, logs: [], streaming: false, confirmRemove: false, paused: false, filter: "" }, rowMenu: undefined });
+  if (tab === "logs" && !store.state.settings.developerTools) tab = "details";
+  logPane = new LivePane(3000, "logcat");
+  store.set({ panel: { gameId, tab, streaming: false, confirmRemove: false, paused: false, filter: "" }, rowMenu: undefined });
   if (tab === "logs") void startLogs();
 }
 
@@ -232,7 +259,9 @@ export function setPanel(patch: Partial<NonNullable<import("./state").State["pan
 export async function startLogs(): Promise<void> {
   const p = store.state.panel;
   if (!p) return;
-  setPanel({ tab: "logs", error: undefined, logs: [], streaming: true });
+  logPane.clear();
+  logPane.setPaused(false);
+  setPanel({ tab: "logs", error: undefined, streaming: true, paused: false });
   const r = await api.logcat.start(p.gameId);
   if (!r.ok) setPanel({ streaming: false, error: r.error });
 }
@@ -279,4 +308,38 @@ export function stopDiscovery(): void {
 
 export function useDiscovered(host: string): void {
   store.set((s) => ({ connectForm: { ...s.connectForm, host, error: undefined } }));
+}
+
+export function openSettings(): void {
+  store.set({ settingsOpen: true, menuOpen: false, rowMenu: undefined });
+}
+
+export function closeSettings(): void {
+  store.set({ settingsOpen: false });
+}
+
+export async function updateSettings(patch: Partial<AppSettings>): Promise<void> {
+  const settings = await api.settings.set(patch);
+  store.set((s) => ({
+    settings,
+    activityOpen: settings.developerTools ? s.activityOpen : false,
+    panel: s.panel && !settings.developerTools && s.panel.tab === "logs" ? { ...s.panel, tab: "details", streaming: false } : s.panel,
+  }));
+}
+
+export async function checkForUpdates(): Promise<void> {
+  store.set({ checkingUpdate: true });
+  try {
+    const update = await api.updates.check();
+    store.set({ update, checkingUpdate: false });
+    if (update.error) toast(`Couldn't check for updates: ${update.error}`, "bad");
+    else if (!update.available) toast(`You're on the latest version (${update.current}).`, "ok");
+  } catch (e) {
+    store.set({ checkingUpdate: false });
+    toast(cleanError(e), "bad");
+  }
+}
+
+export function dismissUpdate(): void {
+  store.set((s) => ({ updateDismissed: s.update?.latest }));
 }

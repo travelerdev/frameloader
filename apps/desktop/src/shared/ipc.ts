@@ -2,6 +2,22 @@
 
 export type AuthMethod = "key" | "password";
 
+export interface AppSettings {
+  /** Show Android logs and the activity drawer. Off by default. */
+  developerTools: boolean;
+  /** Ask GitHub's public releases page whether a newer version exists. */
+  checkForUpdates: boolean;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest?: string;
+  available: boolean;
+  url?: string;
+  checkedAt?: string;
+  error?: string;
+}
+
 export interface DeviceProfile {
   id: string;
   nickname: string;
@@ -191,6 +207,7 @@ export interface EventMap {
   "logcat": { gameId: string; line: string };
   "logcat:ended": { gameId: string; reason: string };
   "titles": TitleInfo[];
+  "update": UpdateInfo;
 }
 
 /** The API exposed on window.frameloader by the preload script. */
@@ -233,6 +250,15 @@ export interface FrameloaderApi {
   activity: {
     recent(): Promise<LogLine[]>;
   };
+  settings: {
+    get(): Promise<AppSettings>;
+    set(patch: Partial<AppSettings>): Promise<AppSettings>;
+  };
+  updates: {
+    status(): Promise<UpdateInfo>;
+    check(): Promise<UpdateInfo>;
+  };
+  appVersion(): Promise<string>;
   getPathForFile(file: File): string;
   on<K extends keyof EventMap>(event: K, cb: (payload: EventMap[K]) => void): () => void;
 }

@@ -1,7 +1,7 @@
 import { formatBytes, timeAgo } from "../../shared/format";
 import { h, icon, kindIcon } from "../dom";
 import type { State } from "../state";
-import { closePanel, launchTitle, removeTitle, setPanel, startLogs, stopLogs, stopTitle } from "../actions";
+import { closePanel, launchTitle, logPane, removeTitle, setPanel, startLogs, stopLogs, stopTitle } from "../actions";
 
 export function panelView(s: State): HTMLElement[] {
   const p = s.panel!;
@@ -21,27 +21,37 @@ export function panelView(s: State): HTMLElement[] {
     "div",
     { class: "tabs" },
     h("button", { class: p.tab === "details" ? "on" : "", onclick: () => setPanel({ tab: "details" }) }, "Details"),
-    t.kind === "apk" ? h("button", { class: p.tab === "logs" ? "on" : "", onclick: () => (p.streaming || p.logs.length ? setPanel({ tab: "logs" }) : void startLogs()) }, "Logs") : null,
+    t.kind === "apk" && s.settings.developerTools ? h("button", { class: p.tab === "logs" ? "on" : "", onclick: () => (p.streaming || logPane.count ? setPanel({ tab: "logs" }) : void startLogs()) }, "Logs") : null,
   );
 
   let body: HTMLElement;
-  if (p.tab === "logs") {
-    const q = p.filter.trim().toLowerCase();
-    const lines = q ? p.logs.filter((l) => l.toLowerCase().includes(q)) : p.logs;
+  if (p.tab === "logs" && s.settings.developerTools) {
     body = h(
       "div",
       { class: "panel-body" },
       h(
         "div",
         { class: "row" },
-        h("input", { id: "logfilter", class: "input grow", placeholder: "Filter", value: p.filter, oninput: (e: Event) => setPanel({ filter: (e.target as HTMLInputElement).value }) }),
-        p.streaming ? h("button", { class: "btn sm", onclick: () => setPanel({ paused: !p.paused }) }, icon(p.paused ? "play" : "pause"), p.paused ? "Resume" : "Pause") : h("button", { class: "btn sm", disabled: offline, onclick: () => void startLogs() }, icon("play"), "Start"),
-        h("button", { class: "btn sm quiet", onclick: () => setPanel({ logs: [] }) }, icon("eraser"), "Clear"),
-        h("button", { class: "btn sm quiet", onclick: () => void navigator.clipboard.writeText(lines.join("\n")) }, icon("copy"), "Copy"),
+        h("input", {
+          id: "logfilter",
+          class: "input grow",
+          placeholder: "Filter",
+          value: p.filter,
+          oninput: (e: Event) => {
+            const filter = (e.target as HTMLInputElement).value;
+            logPane.setFilter(filter);
+            setPanel({ filter });
+          },
+        }),
+        p.streaming
+          ? h("button", { class: "btn sm", onclick: () => { logPane.setPaused(!p.paused); setPanel({ paused: !p.paused }); } }, icon(p.paused ? "play" : "pause"), p.paused ? "Resume" : "Pause")
+          : h("button", { class: "btn sm", disabled: offline, onclick: () => void startLogs() }, icon("play"), "Start"),
+        h("button", { class: "btn sm quiet", onclick: () => logPane.clear() }, icon("eraser"), "Clear"),
+        h("button", { class: "btn sm quiet", onclick: () => void navigator.clipboard.writeText(logPane.text()) }, icon("copy"), "Copy"),
         p.streaming ? h("button", { class: "btn sm quiet", onclick: () => void stopLogs() }, icon("stop"), "Stop") : null,
       ),
       p.error ? h("div", { class: "notice bad" }, p.error) : null,
-      h("div", { class: "logpane", "data-scroll": "logcat", "data-scroll-bottom": p.paused ? "0" : "1" }, lines.length ? lines.join("\n") : p.streaming ? "Waiting for output…" : "No log lines yet."),
+      logPane.el,
     );
   } else {
     const runtimeLabel = t.runtime === "lepton" ? "Lepton (Android)" : t.runtime === "proton-experimental" ? "Proton Experimental" : t.runtime === "proton-stable" ? "Proton (stable)" : t.runtime === "slr4-arm64" ? "Steam Linux Runtime 4 (ARM64)" : t.compatTool ?? "Native";

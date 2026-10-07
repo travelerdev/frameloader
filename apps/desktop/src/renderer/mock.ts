@@ -1,5 +1,5 @@
 // A fake bridge for previewing the UI in a plain browser (no Electron, no headset).
-import type { ConnectionState, DeviceProfile, EventMap, FrameloaderApi, InstallProgress, LogLine, PayloadInfo, TitleInfo } from "../shared/ipc";
+import type { ConnectionState, DeviceProfile, EventMap, FrameloaderApi, InstallProgress, LogLine, PayloadInfo, TitleInfo, UpdateInfo } from "../shared/ipc";
 
 export function installMock(): void {
   const listeners = new Map<string, Set<(p: unknown) => void>>();
@@ -32,6 +32,11 @@ export function installMock(): void {
     emit("titles", titles);
   };
   let pairAbort = false;
+  // ?dev=1 turns developer tools on; ?update=1 pretends a newer release exists.
+  const settings = { developerTools: q.has("dev"), checkForUpdates: true };
+  let updateInfo: UpdateInfo = q.has("update")
+    ? { current: "0.0.1", latest: "0.0.2", available: true, url: "https://github.com/travelerdev/frameloader/releases/latest", checkedAt: new Date().toISOString() }
+    : { current: "0.0.1", available: false };
   const api: FrameloaderApi = {
     devices: { list: async () => devices, remove: async (id) => { const i = devices.findIndex((d) => d.id === id); if (i >= 0) devices.splice(i, 1); }, rename: async (id, n) => { const d = devices.find((x) => x.id === id); if (d) d.nickname = n; } },
     connection: {
@@ -138,6 +143,19 @@ export function installMock(): void {
       stop: async () => clearInterval((api as unknown as { _t?: ReturnType<typeof setInterval> })._t),
     },
     activity: { recent: async () => [{ ts: Date.now() - 5000, level: "info", text: "Preview mode: nothing here talks to a real headset." }] },
+    settings: {
+      get: async () => ({ ...settings }),
+      set: async (patch) => Object.assign(settings, patch),
+    },
+    updates: {
+      status: async () => updateInfo,
+      check: async () => {
+        await sleep(500);
+        updateInfo = { ...updateInfo, checkedAt: new Date().toISOString() };
+        return updateInfo;
+      },
+    },
+    appVersion: async () => "0.0.1",
     getPathForFile: (f) => f.name,
     on: (ev, cb) => {
       if (!listeners.has(ev)) listeners.set(ev, new Set());

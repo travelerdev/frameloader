@@ -1,4 +1,5 @@
 // The install flow: prepare folder, upload, register with Steam, launch.
+import { statSync } from "node:fs";
 import { basename, posix } from "node:path";
 import type { InstallProgress, InstallRequest, InstallResult, InstallStep } from "../shared/ipc";
 import { activity } from "./activity";
@@ -9,6 +10,7 @@ import { getPayload } from "./payload";
 import { RUNTIMES, settingsFor } from "./runtimes";
 import { session } from "./session";
 import { shq } from "./ssh";
+import { renameDevkitTitle } from "./steamClient";
 import { gameIdProblem } from "../shared/gameid";
 
 export type ProgressSink = (p: InstallProgress) => void;
@@ -67,17 +69,23 @@ export async function install(req: InstallRequest, progress: ProgressSink): Prom
     if (payload.info.kind === "apk" && payload.apkPath && payload.info.apk) {
       const apkName = safeApkName(payload.apkPath);
       const remoteApk = posix.join(directory, apkName);
-      const base = 0;
+      const total = payload.info.sizeBytes;
+      let done = 0;
       await ssh.putFile(payload.apkPath, remoteApk + ".part", {
         mode: 0o755,
-        onProgress: (sent) => set("upload", { status: "active", bytes: base + sent, total: payload.info.sizeBytes }),
+        onProgress: (sent) => set("upload", { status: "active", bytes: done + sent, total }),
       });
+      done += statSync(payload.apkPath).size;
       await ssh.exec(`mv -f ${shq(remoteApk + ".part")} ${shq(remoteApk)}`, { quiet: true });
       if (payload.obbPaths.length) {
         await ssh.exec(`mkdir -p ${shq(posix.join(directory, "obb"))}`, { quiet: true });
         for (const obb of payload.obbPaths) {
           const name = basename(obb).replace(/[^A-Za-z0-9._-]+/g, "_");
-          await ssh.putFile(obb, posix.join(directory, "obb", name), { mode: 0o644 });
+          await ssh.putFile(obb, posix.join(directory, "obb", name), {
+            mode: 0o644,
+            onProgress: (sent) => set("upload", { status: "active", bytes: done + sent, total }),
+          });
+          done += statSync(obb).size;
         }
       }
       flatscreen = req.flatscreen;
@@ -118,7 +126,9 @@ export async function install(req: InstallRequest, progress: ProgressSink): Prom
     };
     const reply = await createShortcut(ssh, info.home, parms);
     activity.info(`Steam registered "${req.gameId}"${reply ? `: ${reply}` : ""}`);
-    set("register", { status: "done", detail: "In your library under Non-Steam" });
+    set("register", { status: "active", detail: "Setting the library name" });
+    const renamed = await renameDevkitTitle(ssh, req.gameId, directory, meta.name);
+    set("register", { status: "done", detail: renamed ? "In your library under Non-Steam" : `In your library under Non-Steam as “Devkit Game: ${req.gameId}”` });
 
     // 4. launch
     current = "launch";

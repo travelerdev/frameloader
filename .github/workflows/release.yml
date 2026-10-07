@@ -1,0 +1,111 @@
+name: Release
+
+# Run from the Actions tab: "Release" → Run workflow (on main).
+# Builds the current head of main as the given version (default: the version
+# in apps/desktop/package.json), publishes it as the latest GitHub release with
+# the installers attached, then bumps main to the next patch version.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 1.2.0. Leave empty to release the version in package.json."
+        type: string
+        default: ""
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Pick version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      next: ${{ steps.v.outputs.next }}
+      sha: ${{ steps.v.outputs.sha }}
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases are cut from main. Pick main in the branch dropdown."
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION:-$(node scripts/version.mjs get)}"
+          version="${version#v}"
+          node scripts/version.mjs next "$version" > /dev/null  # validates the format
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "::error::v$version is already released. Pass a newer version."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "next=$(node scripts/version.mjs next "$version")"
+            echo "sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version from $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build
+    needs: prepare
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.sha }}
+
+  publish:
+    name: Publish GitHub release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: frameloader-*
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          ls -la dist
+          gh release create "v$VERSION" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --title "Frameloader $VERSION" \
+            --generate-notes \
+            --latest
+
+  bump:
+    name: Bump main to the next version
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Commit next version
+        env:
+          NEXT: ${{ needs.prepare.outputs.next }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          node scripts/version.mjs set "$NEXT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Start $NEXT after releasing $VERSION"
+          git push origin HEAD:main

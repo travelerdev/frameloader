@@ -1,7 +1,7 @@
 {
   "name": "@frameloader/desktop",
   "productName": "Frameloader",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Drop an APK, Windows app, or Linux build onto your Steam Frame and it shows up in your Steam library.",
   "license": "MIT",
   "author": "Zack <zack@traveler.dev>",
@@ -64,7 +64,9 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "Frameloader-mac-${arch}.${ext}"
+      "artifactName": "Frameloader-mac-${arch}.${ext}",
+      "identity": "-",
+      "hardenedRuntime": false
     },
     "win": {
       "target": [

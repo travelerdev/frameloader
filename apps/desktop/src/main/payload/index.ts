@@ -1,6 +1,6 @@
 // Turn dropped paths into something we can describe and upload.
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, statSync, readdirSync, createWriteStream, existsSync } from "node:fs";
+import { copyFileSync, chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, readdirSync, createWriteStream, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, resolve as resolvePath, sep } from "node:path";
 import yauzl from "yauzl";
@@ -54,7 +54,7 @@ export async function inspectPaths(paths: string[]): Promise<PayloadInfo> {
   if (st.isDirectory()) return inspectDirPayload(target, undefined);
   const ext = extname(target).toLowerCase();
   if (ext === ".zip") return inspectZipPayload(target);
-  if (ext === ".exe" || !ext || ext === ".sh" || ext === ".x86_64" || ext === ".bin" || ext === ".elf") return inspectDirPayload(dirname(target), target);
+  if (ext === ".exe" || !ext || ext === ".sh" || ext === ".x86_64" || ext === ".bin" || ext === ".elf") return inspectSingleExecutable(target);
   throw new Error(`Frameloader doesn't know what to do with a ${ext || "file without an extension"} file. Drop an APK, .exe, zip, or folder.`);
 }
 
@@ -186,6 +186,44 @@ async function inspectDirPayload(root: string, preferred: string | undefined, te
   if (kind === "linux-arm64") info.warnings.push("Linux ARM64 builds start natively, without the Steam Linux Runtime container.");
   payloads.set(info.id, { info, rootDir: root, obbPaths: [], tempDir });
   return info;
+}
+
+/**
+ * A lone program is copied into a temp folder by itself, so only that file is
+ * uploaded. (Uploading its parent folder would send, say, all of ~/Downloads.)
+ */
+async function inspectSingleExecutable(file: string): Promise<PayloadInfo> {
+  const temp = mkdtempSync(join(tmpdir(), "frameloader-"));
+  const staged = join(temp, basename(file));
+  try {
+    copyFileSync(file, staged);
+    chmodSync(staged, 0o755);
+  } catch (e) {
+    rmSync(temp, { recursive: true, force: true });
+    throw e;
+  }
+  const info = await inspectDirPayload(temp, staged, temp, basename(file, extname(file)));
+  info.sourcePaths = [file];
+  const neighbours = siblingsNeeded(file);
+  if (neighbours) info.warnings.unshift(`Only ${basename(file)} will be copied, but ${neighbours} sit next to it. If the program needs them, drop its folder instead.`);
+  return info;
+}
+
+/** Describe files beside a dropped program that it probably depends on, if any. */
+function siblingsNeeded(file: string): string | null {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dirname(file), { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const libs = entries.filter((e) => e.isFile() && /\.(dll|so(\.\d+)*|pak|dat)$/i.test(e.name)).length;
+  const dataDir = entries.some((e) => e.isDirectory() && /(_data|data|content|bin|lib)$/i.test(e.name));
+  if (!libs && !dataDir) return null;
+  const parts: string[] = [];
+  if (libs) parts.push(`${libs} library or data file${libs === 1 ? "" : "s"}`);
+  if (dataDir) parts.push("a data folder");
+  return parts.join(" and ");
 }
 
 async function inspectZipPayload(zipPath: string): Promise<PayloadInfo> {
