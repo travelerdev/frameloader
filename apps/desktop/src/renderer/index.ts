@@ -37,7 +37,7 @@ function render(s: State): void {
     if (s.panel) for (const el of panelView(s)) root.appendChild(el);
     if (s.devicesSheet) for (const el of devicesView(s)) root.appendChild(el);
     if (s.toast) root.appendChild(h("div", { class: `notice ${s.toast.kind}`, "data-anim": "toast", style: "position:fixed;left:50%;bottom:48px;transform:translateX(-50%);z-index:40;box-shadow:0 8px 24px rgba(16,24,40,.15);max-width:min(560px,90vw)" }, s.toast.text));
-    if (isMock) root.appendChild(h("div", { class: "chip warn", style: "position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:50" }, "Preview mode: no headset, simulated data"));
+    if (isMock && !new URLSearchParams(location.search).has("shot")) root.appendChild(h("div", { class: "chip warn", style: "position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:50" }, "Preview mode: no headset, simulated data"));
     // Entrance animations only when an element first appears, not on every re-render.
     root.querySelectorAll<HTMLElement>("[data-anim]").forEach((el) => {
       if (!mounted.has(el.dataset.anim!)) el.classList.add("anim-in");

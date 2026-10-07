@@ -1,5 +1,7 @@
 # Frameloader
 
+[www.frameloader.com](https://www.frameloader.com)
+
 Drop an APK, a Windows app, or a Linux ARM64 build onto Frameloader and it shows up in your Steam Frame's library, under Non-Steam, ready to launch. Open source, cross-platform (macOS, Windows, Linux), and built on the same mechanism Valve's own SteamOS Devkit Client uses.
 
 **Drop it in. It's in your library.**
@@ -32,18 +34,33 @@ Logs for Android titles stream straight into the app (row → Logs). The Activit
 
 ## Development
 
+This is a pnpm workspace:
+
+| Path | What it is |
+|---|---|
+| `apps/desktop` | The Electron app (TypeScript, esbuild, electron-builder) |
+| `apps/web` | The website (plain HTML and CSS, built with Vite) |
+| `packages/tokens` | Shared color, type and shape tokens used by both |
+
 ```bash
 pnpm install
-pnpm start          # build and run Electron
-pnpm dev            # esbuild in watch mode (run `electron .` separately)
+pnpm start          # build and run the desktop app
+pnpm dev:web        # website dev server on http://localhost:5180
 pnpm typecheck
 pnpm test
+pnpm build:web      # static site in apps/web/dist
 pnpm dist:mac       # or dist:win / dist:linux
 ```
 
-The renderer can be previewed in a normal browser with simulated data: serve `dist/` and open `index.html?mock=connected` (also `fresh`, `empty`, `offline`, `nolepton`, `fail`).
+The desktop app bundles all of its runtime dependencies into `dist/main.cjs`, so packages contain no `node_modules`.
+
+The renderer can be previewed in a normal browser with simulated data: serve `apps/desktop/dist/` and open `index.html?mock=connected` (also `fresh`, `empty`, `offline`, `nolepton`, `fail`). `pnpm --filter @frameloader/desktop screenshots` regenerates the website's screenshots from that mock, in light and dark.
 
 `pnpm install` must be allowed to run the `electron` and `esbuild` build scripts (see `pnpm-workspace.yaml`). If Electron's binary is missing, run `node node_modules/electron/install.js`.
+
+## Privacy
+
+Frameloader has no analytics, telemetry, crash reporting, accounts or update checks. Its only network connections are to your headset on your local network: SSH, Valve's devkit pairing service on port 32000, and mDNS discovery. A remembered password is encrypted with the operating system's secure storage. The website loads no third-party scripts, fonts or cookies.
 
 ## Troubleshooting
 
@@ -60,4 +77,4 @@ The renderer can be previewed in a normal browser with simulated data: serve `di
 - [Lepton](https://gitlab.steamos.cloud/frame-public/lepton) (MIT) for documenting how Android titles are launched.
 - [Frame Control](https://github.com/saphid/frame-control) (MIT) for field notes that verified each runtime on real hardware.
 
-MIT licensed.
+MIT licensed. If Frameloader saves you some time, you can [buy me a coffee](https://buymeacoffee.com/travelerdev).

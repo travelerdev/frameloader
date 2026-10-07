@@ -1,0 +1,46 @@
+/* Frameloader design tokens, shared by the desktop app and the website. */
+:root {
+  --page: #f5f6f8;
+  --card: #ffffff;
+  --card-2: #f9fafb;
+  --text: #1b1f24;
+  --text-2: #5c6470;
+  --text-3: #8a919c;
+  --border: #e3e6ea;
+  --border-2: #d3d7dd;
+  --accent: #2e6be6;
+  --accent-hover: #255cc9;
+  --accent-soft: #e9f0fd;
+  --success: #1f9d55;
+  --success-soft: #e6f6ec;
+  --warning: #b7791f;
+  --warning-soft: #fdf3e1;
+  --danger: #d23f3f;
+  --danger-soft: #fdeaea;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, Roboto, sans-serif;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #121417;
+    --card: #1b1e23;
+    --card-2: #20242a;
+    --text: #e8eaed;
+    --text-2: #a4abb5;
+    --text-3: #6f7782;
+    --border: #2a2f37;
+    --border-2: #363c46;
+    --accent: #5b8df0;
+    --accent-hover: #74a0f3;
+    --accent-soft: #1d2a45;
+    --success: #3fbf74;
+    --success-soft: #16301f;
+    --warning: #d9a441;
+    --warning-soft: #332a14;
+    --danger: #ef6b6b;
+    --danger-soft: #3a1c1c;
+  }
+}

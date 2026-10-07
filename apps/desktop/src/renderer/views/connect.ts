@@ -1,4 +1,6 @@
 import { h, icon } from "../dom";
+
+const TERMS_URL = "https://www.frameloader.com/terms.html";
 import { store, type State } from "../state";
 import { cancelPair, connectSaved, connectWithPassword, pair, useDiscovered } from "../actions";
 
@@ -109,6 +111,13 @@ export function connectView(s: State): HTMLElement {
       found,
       f.mode === "pair" ? pairBlock : passwordBlock,
       f.error ? h("div", { class: "notice bad" }, f.error) : null,
+      h(
+        "p",
+        { class: "help" },
+        "Frameloader is free software with no warranty. By connecting, you accept the ",
+        h("a", { href: TERMS_URL, target: "_blank", rel: "noreferrer" }, "terms of use"),
+        " and use it at your own risk.",
+      ),
       h(
         "div",
         { class: "row spread wrap" },

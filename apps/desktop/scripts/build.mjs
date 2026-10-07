@@ -1,8 +1,12 @@
 // Builds main + preload (Node/CJS) and the renderer (browser) with esbuild.
 // `node scripts/build.mjs --watch` rebuilds on change.
 import { build, context } from "esbuild";
-import { cpSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
+
+const require = createRequire(import.meta.url);
+const TOKENS = require.resolve("@frameloader/tokens/tokens.css");
 
 const watch = process.argv.includes("--watch");
 const prod = process.env.NODE_ENV === "production";
@@ -14,7 +18,9 @@ const nodeCommon = {
   target: "node22",
   sourcemap: !prod,
   minify: false,
-  external: ["electron", "ssh2", "cpu-features", "app-info-parser", "yauzl"],
+  // Everything except Electron is bundled, so the packaged app needs no node_modules.
+  // ssh2's optional native helpers are loaded in try/catch and fall back to pure JS.
+  external: ["electron", "cpu-features", "*.node"],
   logLevel: "info",
 };
 
@@ -47,7 +53,8 @@ const configs = [
 function copyStatic() {
   mkdirSync("dist", { recursive: true });
   cpSync("src/renderer/index.html", "dist/index.html");
-  cpSync("src/renderer/styles.css", "dist/styles.css");
+  // Shared tokens first, then the app's own styles.
+  writeFileSync("dist/styles.css", readFileSync(TOKENS, "utf8") + "\n" + readFileSync("src/renderer/styles.css", "utf8"));
 }
 
 copyStatic();
@@ -59,6 +66,7 @@ if (watch) {
   fsWatch("src/renderer", { recursive: true }, (_e, f) => {
     if (f && (f.endsWith(".html") || f.endsWith(".css"))) copyStatic();
   });
+  fsWatch(TOKENS, () => copyStatic());
   console.log("watching…");
 } else {
   await Promise.all(configs.map((c) => build(c)));

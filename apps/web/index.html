@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Frameloader: sideload apps onto your Steam Frame</title>
+    <meta name="description" content="Drop an Android app, Windows program, or Linux build onto Frameloader and it shows up in your Steam Frame's library. Free, open source, and completely private." />
+    <meta name="color-scheme" content="light dark" />
+    <meta property="og:title" content="Frameloader" />
+    <meta property="og:description" content="Drag. Drop. Play. Free, open-source sideloading for Steam Frame." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.frameloader.com/" />
+    <meta property="og:image" content="https://www.frameloader.com/screenshots/home-light.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://www.frameloader.com/" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="#top" aria-label="Frameloader home">
+          <span class="logo"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><rect x="4" y="15" width="16" height="6" rx="2"/></svg></span>
+          Frameloader
+        </a>
+        <nav class="nav-links" aria-label="Sections">
+          <a href="#how">How it works</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#open-source">Open source</a>
+          <a class="btn sm" href="https://github.com/travelerdev/frameloader">
+            <svg viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+            GitHub
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero wrap">
+        <span class="chip accent">For Steam Frame · Free and open source</span>
+        <h1>Drag. Drop. Play.</h1>
+        <p class="lede">
+          How do you sideload APK Android apps, Windows exe apps, Linux apps, and more to your Steam Frame for free
+          without installing sketchy closed-source shareware? You use Frameloader.
+        </p>
+        <div class="cta">
+          <a class="btn primary lg" href="https://github.com/travelerdev/frameloader/releases/latest">
+            <svg viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+            Download
+          </a>
+          <a class="btn lg" href="https://github.com/travelerdev/frameloader">View the code</a>
+        </div>
+        <p class="small muted">macOS, Windows, and Linux · MIT licensed · Fully LAN</p>
+
+        <figure class="window" aria-label="Frameloader showing the apps installed on a Steam Frame">
+          <div class="window-bar"><span></span><span></span><span></span></div>
+          <picture>
+            <source srcset="./screenshots/home-dark.png" media="(prefers-color-scheme: dark)" />
+            <img src="./screenshots/home-light.png" width="960" height="640" alt="Frameloader's home screen: a drop zone above a list of three apps installed on the headset, each with a Play button." />
+          </picture>
+        </figure>
+      </section>
+
+
+      <section id="how" class="section wrap">
+        <div class="split">
+          <div class="steps">
+            <h2>How to get loading</h2>
+            <ol>
+              <li>
+                <span class="num">1</span>
+                <div><b>Turn on Developer Mode</b><span>Steam Settings → System → Enable Developer Mode, then set a user password under Developer.</span></div>
+              </li>
+              <li>
+                <span class="num">2</span>
+                <div><b>Pair</b><span>Open Settings → Developer → Pair new host on the headset, click Pair in Frameloader, and approve.</span></div>
+              </li>
+              <li>
+                <span class="num">3</span>
+                <div><b>Drop</b><span>From then on it's drag, drop, Install. The title appears under Non-Steam in your library.</span></div>
+              </li>
+            </ol>
+            <p class="muted small">
+              Frameloader automates the sideloading process that Valve built for developers to test apps on the Frame.
+              This lets you get apps into the Frame's library without needing to mess around with the terminal yourself every time.
+            </p>
+          </div>
+          <figure class="window small-window">
+            <div class="window-bar"><span></span><span></span><span></span></div>
+            <picture>
+              <source srcset="./screenshots/review-dark.png" media="(prefers-color-scheme: dark)" />
+              <img src="./screenshots/review-light.png" width="960" height="640" loading="lazy" alt="Reviewing an Android app before installing: its name, details like arm64 and VR app, the Lepton runtime, and an Install to Frame button." />
+            </picture>
+          </figure>
+        </div>
+      </section>
+
+      <section id="privacy" class="section wrap">
+        <div class="card privacy">
+          <div class="privacy-head">
+            <div class="icon big"><svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></div>
+            <div>
+              <h2>Actually private - no analytics, no tracking, nothing.</h2>
+              <p class="muted">Frameloader is a tiny piece of freeware that solves one problem - getting apps from your computer to your Steam Frame.</p>
+            </div>
+          </div>
+          <ul class="checks">
+            <li><b>No analytics, no telemetry, no crash reporting.</b> Frameloader doesn't count you, profile you, or phone home.</li>
+            <li><b>No account.</b> Nothing to sign up for and nothing to sign in to.</li>
+            <li><b>Talks only to your Frame.</b> Its only connections are to the headset on your own network: SSH, Valve's pairing service, and local discovery.</li>
+            <li><b>This website doesn't track you either.</b> No cookies, no analytics, no third-party fonts or scripts.</li>
+          </ul>
+          <p class="small muted">Don't take our word for it: <a href="https://github.com/travelerdev/frameloader">read the code</a>.</p>
+        </div>
+      </section>
+
+      <section id="open-source" class="section wrap">
+        <div class="section-head">
+          <h2>Open source, top to bottom</h2>
+          <p class="muted">Yes it was written with the help of Claude, but it's also a straight forward bit of code. The whole app (and this site) is MIT licensed and you can read it, fork it, file an issue, send a PR.</p>
+        </div>
+        <div class="grid two">
+          <a class="card link-card" href="https://github.com/travelerdev/frameloader">
+            <h3>travelerdev/frameloader</h3>
+            <p class="muted">The desktop app, this website, and the notes on how sideloading to the Frame actually works.</p>
+            <span class="more">View on GitHub →</span>
+          </a>
+          <div class="card link-card">
+            <h3>Standing on good shoulders</h3>
+            <p class="muted">
+              Valve's open-source <a href="https://gitlab.steamos.cloud/devkit/steamos-devkit">SteamOS Devkit Client</a> and
+              <a href="https://gitlab.steamos.cloud/frame-public/lepton">Lepton</a>, plus the field notes from
+              <a href="https://github.com/saphid/frame-control">Frame Control</a>.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="support" class="section wrap">
+        <div class="card support">
+          <div class="support-text">
+            <h2>Frameloader is 100% free and open source</h2>
+            <p class="muted">
+              I'm <a href="https://zack.computer">Zack</a> - I made this because I wanted to solve this problem without having to
+              install sketchy closed-source software or dig into terminal all afternoon.
+            </p>
+          </div>
+          <a class="btn primary lg" href="https://buymeacoffee.com/travelerdev">
+            <svg viewBox="0 0 24 24"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/></svg>
+            Buy me a coffee
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <div class="footer-meta">
+          <span>© 2026 Traveler Dev · <a href="https://github.com/travelerdev/frameloader">GitHub</a> · <a href="https://github.com/travelerdev/frameloader/blob/main/LICENSE">MIT License</a> · <a href="./terms.html">Terms</a></span>
+          <span class="muted small">Frameloader is provided as is, with no warranty. Use it at your own risk; see the <a href="./terms.html">terms</a>.</span>
+          <span class="muted small">Not affiliated with Valve. Steam and Steam Frame are trademarks of Valve Corporation.</span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

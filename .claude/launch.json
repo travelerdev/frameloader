@@ -4,8 +4,14 @@
     {
       "name": "ui-preview",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "dist"],
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "apps/desktop/dist"],
       "port": 8765
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@frameloader/web", "dev", "--strictPort"],
+      "port": 5180
     }
   ]
 }

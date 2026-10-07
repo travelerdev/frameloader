@@ -1,3 +1,6 @@
+packages:
+  - apps/*
+  - packages/*
 nodeLinker: hoisted
 allowBuilds:
   electron: true
@@ -5,3 +8,5 @@ allowBuilds:
   ssh2: true
   cpu-features: true
   electron-winstaller: false
+minimumReleaseAgeExclude:
+  - vite@8.3.3

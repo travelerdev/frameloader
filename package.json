@@ -1,89 +1,17 @@
 {
-  "name": "frameloader",
-  "productName": "Frameloader",
-  "version": "0.1.0",
-  "description": "Drop an APK, Windows app, or Linux build onto your Steam Frame and it shows up in your Steam library.",
-  "license": "MIT",
-  "author": "Zack <zack@traveler.dev>",
+  "name": "frameloader-monorepo",
   "private": true,
-  "main": "dist/main.cjs",
-  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@11.24.0",
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "dev": "node scripts/build.mjs --watch",
-    "start": "pnpm build && electron .",
-    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
-    "test": "pnpm build && node --test dist/test/*.test.cjs",
-    "dist": "pnpm build && electron-builder --publish never",
-    "dist:mac": "pnpm build && electron-builder --mac --arm64 --publish never",
-    "dist:win": "pnpm build && electron-builder --win --x64 --publish never",
-    "dist:linux": "pnpm build && electron-builder --linux --x64 --arm64 --publish never"
-  },
-  "dependencies": {
-    "app-info-parser": "^1.1.6",
-    "multicast-dns": "^7.2.5",
-    "ssh2": "^1.17.0",
-    "yauzl": "^3.2.0"
-  },
-  "devDependencies": {
-    "@types/multicast-dns": "^7.2.4",
-    "@types/node": "^24.0.0",
-    "@types/ssh2": "^1.15.6",
-    "@types/yauzl": "^2.10.3",
-    "electron": "^44.5.1",
-    "electron-builder": "^26.15.3",
-    "esbuild": "^0.28.2",
-    "typescript": "^7.0.2"
-  },
-  "build": {
-    "appId": "dev.traveler.frameloader",
-    "productName": "Frameloader",
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      "dist/**/*",
-      "package.json",
-      "!dist/test/**"
-    ],
-    "extraResources": [
-      {
-        "from": "vendor/devkit-utils",
-        "to": "devkit-utils",
-        "filter": [
-          "**/*",
-          "!**/__pycache__/**"
-        ]
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.utilities",
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "artifactName": "Frameloader-mac-${arch}.${ext}"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ],
-      "artifactName": "Frameloader-win-${arch}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "category": "Utility",
-      "artifactName": "Frameloader-linux-${arch}.${ext}"
-    }
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @frameloader/desktop test",
+    "start": "pnpm --filter @frameloader/desktop start",
+    "dev:web": "pnpm --filter @frameloader/web dev",
+    "build:web": "pnpm --filter @frameloader/web build",
+    "dist:mac": "pnpm --filter @frameloader/desktop dist:mac",
+    "dist:win": "pnpm --filter @frameloader/desktop dist:win",
+    "dist:linux": "pnpm --filter @frameloader/desktop dist:linux"
   }
 }
