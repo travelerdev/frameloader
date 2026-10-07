@@ -12,6 +12,11 @@
     "build:web": "pnpm --filter @frameloader/web build",
     "dist:mac": "pnpm --filter @frameloader/desktop dist:mac",
     "dist:win": "pnpm --filter @frameloader/desktop dist:win",
-    "dist:linux": "pnpm --filter @frameloader/desktop dist:linux"
+    "dist:linux": "pnpm --filter @frameloader/desktop dist:linux",
+    "preview:web": "pnpm build:web && wrangler dev",
+    "deploy:web": "pnpm build:web && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.148.0"
   }
 }

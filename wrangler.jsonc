@@ -1,0 +1,25 @@
+// The frameloader.com website: a Worker that only serves static assets.
+// Docs: https://developers.cloudflare.com/workers/static-assets/
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Must match the Worker's name in the Cloudflare dashboard, or Workers Builds refuses to deploy.
+  "name": "frameloader-web",
+  "compatibility_date": "2026-10-07",
+  "assets": {
+    // The website's Vite output (pnpm build:web). Built before `wrangler deploy` runs.
+    "directory": "./apps/web/dist",
+    // Unknown paths get dist/404.html with a 404 status.
+    "not_found_handling": "404-page",
+    // /terms.html is served at /terms; folder indexes get a trailing slash.
+    "html_handling": "auto-trailing-slash"
+  },
+  "routes": [
+    // Cloudflare creates the DNS record and certificate for this on deploy.
+    { "pattern": "www.frameloader.com", "custom_domain": true }
+  ],
+  // Keep the *.workers.dev address off; the site lives on www.frameloader.com.
+  "workers_dev": false,
+  // Pull request / branch previews get their own URL (Worker Previews).
+  "preview_urls": true,
+  "observability": { "enabled": false }
+}

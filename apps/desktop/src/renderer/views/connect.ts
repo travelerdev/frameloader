@@ -1,6 +1,6 @@
 import { h, icon } from "../dom";
 
-const TERMS_URL = "https://www.frameloader.com/terms.html";
+const TERMS_URL = "https://www.frameloader.com/terms";
 import { store, type State } from "../state";
 import { cancelPair, connectSaved, connectWithPassword, openSettings, pair, useDiscovered } from "../actions";
 

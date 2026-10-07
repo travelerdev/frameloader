@@ -75,7 +75,7 @@ export function settingsView(s: State): HTMLElement[] {
             "Frameloader is free, open-source software with no warranty. ",
             h("a", { href: REPO_URL, target: "_blank", rel: "noreferrer" }, "Source code"),
             " · ",
-            h("a", { href: "https://www.frameloader.com/terms.html", target: "_blank", rel: "noreferrer" }, "Terms of use"),
+            h("a", { href: "https://www.frameloader.com/terms", target: "_blank", rel: "noreferrer" }, "Terms of use"),
           ),
         ),
       ),

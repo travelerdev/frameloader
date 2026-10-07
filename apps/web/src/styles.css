@@ -125,3 +125,7 @@ a.link-card:hover { text-decoration: none; border-color: var(--accent); }
 .legal h2 { font-size: 19px; margin-top: 12px; }
 .legal p, .legal li { color: var(--text-2); }
 .legal ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.legal h1 { font-size: clamp(30px, 5vw, 40px); }
+
+/* 404 page */
+.not-found { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; padding-top: 64px; }

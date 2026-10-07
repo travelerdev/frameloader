@@ -8,5 +8,8 @@ allowBuilds:
   ssh2: true
   cpu-features: true
   electron-winstaller: false
+  workerd: true
 minimumReleaseAgeExclude:
   - vite@8.3.3
+  - miniflare@5.20261006.0-alpha
+  - wrangler@4.148.0

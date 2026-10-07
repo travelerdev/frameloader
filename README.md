@@ -78,6 +78,22 @@ Builds are not code-signed yet. On macOS the app is ad-hoc signed, so the first 
 
 Installed apps notice new releases on their own: they check GitHub's releases API and show a banner with a link. Nothing is downloaded or installed automatically, and Settings → Updates turns the check off.
 
+## Website hosting (Cloudflare Workers)
+
+www.frameloader.com is a Cloudflare Worker that serves `apps/web/dist` as static assets, deployed by Workers Builds on every push to `main`. The Worker is defined in `wrangler.jsonc` at the repo root; headers live in `apps/web/public/_headers`.
+
+Workers Builds settings (Worker → Settings → Build):
+
+| Setting | Value |
+|---|---|
+| Root directory | `/` |
+| Build command | `pnpm install --frozen-lockfile --filter "@frameloader/web..." && pnpm build:web` |
+| Deploy command | `pnpm exec wrangler deploy` |
+| Preview command | `pnpm exec wrangler preview` |
+| Build variables | `PNPM_VERSION=11.24.0`, `SKIP_DEPENDENCY_INSTALL=1`, `ELECTRON_SKIP_BINARY_DOWNLOAD=1` |
+
+Locally: `pnpm preview:web` runs the built site in the Workers runtime, and `pnpm deploy:web` deploys by hand.
+
 ## Troubleshooting
 
 - **"Couldn't find frame.local."** Frameloader resolves names itself over mDNS, then the OS resolver, then by browsing for the devkit service, then the last known IP. If all fail: the Frame is asleep (it drops off the network), Developer Mode is off, or the network blocks multicast (guest/isolated Wi-Fi). Typing the IP from Quick Settings always works.
@@ -94,4 +110,4 @@ Installed apps notice new releases on their own: they check GitHub's releases AP
 - [Lepton](https://gitlab.steamos.cloud/frame-public/lepton) (MIT) for documenting how Android titles are launched.
 - [Frame Control](https://github.com/saphid/frame-control) (MIT) for field notes that verified each runtime on real hardware.
 
-MIT licensed, provided as is with no warranty; see the [terms of use](https://www.frameloader.com/terms.html). If Frameloader saves you some time, you can [buy me a coffee](https://buymeacoffee.com/travelerdev).
+MIT licensed, provided as is with no warranty; see the [terms of use](https://www.frameloader.com/terms). If Frameloader saves you some time, you can [buy me a coffee](https://buymeacoffee.com/travelerdev).

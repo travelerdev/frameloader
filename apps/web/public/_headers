@@ -1,0 +1,16 @@
+# Applied by Cloudflare to every static asset response. https://developers.cloudflare.com/workers/static-assets/headers/
+/*
+  Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# Vite fingerprints everything in /assets, so it can be cached forever.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Keep preview and version URLs out of search results.
+https://:version.:subdomain.workers.dev/*
+  X-Robots-Tag: noindex
