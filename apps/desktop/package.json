@@ -4,7 +4,10 @@
   "version": "0.0.1",
   "description": "Drop an APK, Windows app, or Linux build onto your Steam Frame and it shows up in your Steam library.",
   "license": "MIT",
-  "author": "Zack <zack@traveler.dev>",
+  "author": {
+    "name": "Traveler Dev Ltd",
+    "email": "hi@traveler.dev"
+  },
   "private": true,
   "main": "dist/main.cjs",
   "type": "module",
