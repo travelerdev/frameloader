@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/desktop/build/icon.png" alt="Frameloader logo" width="160" />
+</p>
+
 # Frameloader
 
 [www.frameloader.com](https://www.frameloader.com)
