@@ -64,7 +64,7 @@ Frameloader has no analytics, telemetry, crash reporting or accounts. It connect
 
 ## Builds and releases
 
-Every push and pull request runs `.github/workflows/build.yml`: typecheck, tests, the website build, then installers for macOS (arm64 and x64), Windows x64, and Linux x64 and arm64. The installers are attached to the run as artifacts.
+Every push to `main` and every pull request runs `.github/workflows/build.yml`: typecheck, tests, the website build, then installers for macOS (arm64 and x64), Windows x64, and Linux x64 and arm64. The installers are attached to the run as artifacts.
 
 To ship a release:
 

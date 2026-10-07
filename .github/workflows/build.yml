@@ -1,12 +1,13 @@
 name: Build
 
-# Every push and pull request: check the code, then build installers for each
+# Every push to main and every pull request: check the code, then build installers for each
 # platform and attach them to the run as artifacts. The release workflow calls
 # this same file with a version to stamp into the app.
 on:
+  # Pushes to main, plus pull requests. Branch pushes aren't built separately, so a
+  # pull request's commits run once (as pull_request), not twice.
   push:
-    branches: ["**"]
-    tags-ignore: ["**"]
+    branches: [main]
   pull_request:
   workflow_call:
     inputs:
