@@ -42,8 +42,10 @@ function open(): Mdns | undefined {
   }
 }
 
-// Addresses seen for .local hosts, across scans. Responders won't repeat a record they
-// multicast within the last second, so a scan can see a name without its address.
+// Addresses seen for headset hostnames, across scans, for display only. Responders won't
+// repeat a record they multicast within the last second, so a scan can see a name without
+// its address. Only names a scan asked about are stored, and connecting never uses this:
+// it always resolves live, and known headsets are pinned by SSH host key anyway.
 const seenAddresses = new Map<string, { address: string; at: number }>();
 const SEEN_TTL_MS = 10 * 60 * 1000;
 
@@ -113,7 +115,7 @@ export function browse(timeoutMs = 3000): Promise<DiscoveredFrame[]> {
         else if (rec.type === "A") {
           if (!addresses.has(name)) addresses.set(name, new Set());
           addresses.get(name)!.add(String(rec.data));
-          remember(name, String(rec.data));
+          if (asked.has(name) || [...instances.values()].some((i) => (i.host ?? hostGuess(i.name)) === name)) remember(name, String(rec.data));
         }
       }
     });
@@ -166,7 +168,6 @@ export function resolveMdns(host: string, timeoutMs = 3000): Promise<string | un
     };
     m.on("response", (r) => {
       for (const rec of records(r as { answers?: Record_[]; additionals?: Record_[] })) {
-        if (rec.type === "A" && isIP(String(rec.data)) === 4) remember(norm(rec.name), String(rec.data));
         if (rec.type === "A" && norm(rec.name) === want && isIP(String(rec.data)) === 4) return finish(String(rec.data));
       }
     });
@@ -175,7 +176,8 @@ export function resolveMdns(host: string, timeoutMs = 3000): Promise<string | un
     // and an idle headset's Wi-Fi adds latency, so ask a few times.
     ask();
     const retries = [700, 1600].map((ms) => setTimeout(ask, ms));
-    const timer = setTimeout(() => finish(recalled(want)), timeoutMs);
+    // No cached fallback here: this result is a connection target, so it must be a live answer.
+    const timer = setTimeout(() => finish(undefined), timeoutMs);
   });
 }
 

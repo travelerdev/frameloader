@@ -276,34 +276,34 @@ export function cleanError(e: unknown): string {
   return m.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 }
 
-let discoveryTimer: number | undefined;
+let discoveryStarted = false;
 let discoveryBusy = false;
 
-async function discoverOnce(): Promise<void> {
+/** One scan of the local network. Results stay on screen until the user asks again. */
+export async function discoverOnce(): Promise<void> {
   if (discoveryBusy) return;
   discoveryBusy = true;
   store.set({ discovering: true });
   try {
     const discovered = await api.connection.discover();
-    store.set({ discovered, discovering: false });
+    store.set({ discovered, discovering: false, discoveryDone: true });
   } catch {
-    store.set({ discovering: false });
+    store.set({ discovering: false, discoveryDone: true });
   } finally {
     discoveryBusy = false;
   }
 }
 
-/** Keep browsing for headsets while the connect screen is up. */
+/** Scan once when the connect screen opens; further scans happen only when the user asks. */
 export function startDiscovery(): void {
-  if (discoveryTimer !== undefined) return;
+  if (discoveryStarted) return;
+  discoveryStarted = true;
   void discoverOnce();
-  discoveryTimer = window.setInterval(() => void discoverOnce(), 5000);
 }
 
+/** Called when the connect screen closes, so the next visit scans again. */
 export function stopDiscovery(): void {
-  if (discoveryTimer === undefined) return;
-  clearInterval(discoveryTimer);
-  discoveryTimer = undefined;
+  discoveryStarted = false;
 }
 
 export function useDiscovered(host: string): void {

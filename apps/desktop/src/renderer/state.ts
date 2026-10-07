@@ -68,6 +68,8 @@ export interface State {
   inspectError?: string;
   discovered: DiscoveredFrame[];
   discovering: boolean;
+  /** At least one scan has finished since the connect screen opened. */
+  discoveryDone: boolean;
 }
 
 export const initialState: State = {
@@ -89,6 +91,7 @@ export const initialState: State = {
   inspecting: false,
   discovered: [],
   discovering: false,
+  discoveryDone: false,
 };
 
 type Listener = (s: State) => void;
