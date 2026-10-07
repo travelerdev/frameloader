@@ -140,7 +140,6 @@ jobs:
       - name: Build installers
         working-directory: apps/desktop
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
           SIGN_MAC: ${{ inputs.sign_mac }}
           SIGN_CSC_LINK: ${{ secrets.CSC_LINK }}
           SIGN_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -160,6 +159,11 @@ jobs:
             trap 'rm -f "$key_file"' EXIT
             export CSC_LINK="$SIGN_CSC_LINK" CSC_KEY_PASSWORD="$SIGN_CSC_KEY_PASSWORD"
             export APPLE_API_KEY="$key_file" APPLE_API_KEY_ID="$SIGN_APPLE_API_KEY_ID" APPLE_API_ISSUER="$SIGN_APPLE_API_ISSUER"
+          else
+            # Unsigned (ad-hoc) build: don't let electron-builder look for a certificate.
+            # Not set for signed builds: with it, electron-builder imports CSC_LINK but then
+            # won't look the identity up, and silently skips signing.
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
           unset SIGN_CSC_LINK SIGN_CSC_KEY_PASSWORD SIGN_APPLE_API_KEY SIGN_APPLE_API_KEY_ID SIGN_APPLE_API_ISSUER
           pnpm build
