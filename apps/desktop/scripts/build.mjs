@@ -53,6 +53,7 @@ const configs = [
 function copyStatic() {
   mkdirSync("dist", { recursive: true });
   cpSync("src/renderer/index.html", "dist/index.html");
+  cpSync("src/renderer/logo.png", "dist/logo.png");
   // Shared tokens first, then the app's own styles.
   writeFileSync("dist/styles.css", readFileSync(TOKENS, "utf8") + "\n" + readFileSync("src/renderer/styles.css", "utf8"));
 }
@@ -64,7 +65,7 @@ if (watch) {
   // Keep static files fresh too.
   const { watch: fsWatch } = await import("node:fs");
   fsWatch("src/renderer", { recursive: true }, (_e, f) => {
-    if (f && (f.endsWith(".html") || f.endsWith(".css"))) copyStatic();
+    if (f && (f.endsWith(".html") || f.endsWith(".css") || f.endsWith(".png"))) copyStatic();
   });
   fsWatch(TOKENS, () => copyStatic());
   console.log("watching…");

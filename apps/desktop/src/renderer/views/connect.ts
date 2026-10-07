@@ -144,7 +144,7 @@ export function connectView(s: State): HTMLElement {
     step(3, "Open Pair new host", "Settings → Developer → Pair new host, when you click Pair."),
   );
 
-  const brand = h("div", { class: "brand brand-lg" }, h("span", { class: "logo" }, icon("drop")), "Frameloader");
+  const brand = h("div", { class: "brand brand-lg" }, h("img", { class: "logo", src: "logo.png", alt: "" }), "Frameloader");
 
   const settingsBtn = h("button", { class: "btn sm quiet corner", "aria-label": "Settings", title: "Settings", onclick: () => openSettings() }, icon("settings"));
 
