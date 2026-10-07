@@ -77,7 +77,8 @@ export function installMock(): void {
       installRuntime: async () => ({ ok: true }),
       discover: async () => {
         await sleep(600);
-        return scenario === "fresh" || scenario === "connected"
+        // ?nodisc=1 pretends no headset answers.
+        return !q.has("nodisc") && (scenario === "fresh" || scenario === "connected")
           ? [{ name: "frame", host: "frame.local", address: "192.168.1.42", addresses: ["192.168.1.42"], port: 32000, login: "steamos" }]
           : [];
       },

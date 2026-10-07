@@ -3,24 +3,29 @@ import assert from "node:assert/strict";
 import mdns from "multicast-dns";
 import { browse, resolveHost, DEVKIT_SERVICE } from "../src/main/discovery";
 
-// A fake Steam Frame answering on the local multicast group. Skips (not fails)
-// when multicast isn't available on this machine.
+// A fake Steam Frame answering on the local multicast group the way SteamOS does:
+// the PTR browse gets only the PTR and an A record; SRV and TXT are answered only
+// when asked for. Skips (not fails) when multicast isn't available on this machine.
 function fakeFrame(name: string, host: string, address: string) {
   const m = mdns();
   m.on("error", () => undefined);
+  const instance = `${name}.${DEVKIT_SERVICE}`;
   m.on("query", (q) => {
-    const wantsPtr = q.questions.some((x) => x.type === "PTR" && x.name.toLowerCase() === DEVKIT_SERVICE);
-    const wantsA = q.questions.some((x) => x.type === "A" && x.name.toLowerCase() === host);
-    if (!wantsPtr && !wantsA) return;
-    const instance = `${name}.${DEVKIT_SERVICE}`;
-    m.respond({
-      answers: wantsPtr ? [{ name: DEVKIT_SERVICE, type: "PTR", ttl: 120, data: instance }] : [],
-      additionals: [
-        { name: instance, type: "SRV", ttl: 120, data: { target: host, port: 32000, priority: 0, weight: 0 } },
-        { name: instance, type: "TXT", ttl: 120, data: [Buffer.from("login=steamos")] },
-        { name: host, type: "A", ttl: 120, data: address },
-      ],
-    });
+    const answers: { name: string; type: string; ttl: number; data: unknown }[] = [];
+    for (const x of q.questions) {
+      const qname = x.name.toLowerCase();
+      if (x.type === "PTR" && qname === DEVKIT_SERVICE) {
+        answers.push({ name: DEVKIT_SERVICE, type: "PTR", ttl: 120, data: instance });
+        answers.push({ name: host, type: "A", ttl: 120, data: address });
+      } else if (x.type === "SRV" && qname === instance) {
+        answers.push({ name: instance, type: "SRV", ttl: 120, data: { target: host, port: 32000, priority: 0, weight: 0 } });
+      } else if (x.type === "TXT" && qname === instance) {
+        answers.push({ name: instance, type: "TXT", ttl: 120, data: [Buffer.from("login=steamos")] });
+      } else if (x.type === "A" && qname === host) {
+        answers.push({ name: host, type: "A", ttl: 120, data: address });
+      }
+    }
+    if (answers.length) m.respond({ answers } as never);
   });
   return () => m.destroy();
 }

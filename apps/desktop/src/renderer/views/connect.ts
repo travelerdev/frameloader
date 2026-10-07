@@ -2,7 +2,7 @@ import { h, icon } from "../dom";
 
 const TERMS_URL = "https://www.frameloader.com/terms";
 import { store, type State } from "../state";
-import { cancelPair, connectSaved, connectWithPassword, openSettings, pair, useDiscovered } from "../actions";
+import { cancelPair, connectSaved, connectWithPassword, discoverOnce, openSettings, pair, useDiscovered } from "../actions";
 
 export function connectView(s: State): HTMLElement {
   const f = s.connectForm;
@@ -30,15 +30,25 @@ export function connectView(s: State): HTMLElement {
     h("div", { class: "help" }, "Changed the hostname in Steam Settings → System? Enter it here. Frameloader finds the address itself, so .local is optional."),
   );
 
+  const searching = s.discovering || !s.discoveryDone;
   const found = h(
     "div",
     { class: "found" },
-    h(
-      "div",
-      { class: "row small muted", style: "gap: 8px" },
-      s.discovering && !s.discovered.length ? h("span", { class: "spinner" }) : icon("headset"),
-      s.discovered.length ? "Found on your network" : s.discovering ? "Looking for headsets on your network…" : "No headset found yet. Developer Mode must be on and the Frame awake.",
-    ),
+    s.discovered.length
+      ? h(
+          "div",
+          { class: "row spread small muted", style: "gap: 8px" },
+          h("span", { class: "row", style: "gap: 8px" }, icon("headset"), "Found on your network"),
+          h("button", { class: "link small", disabled: searching || pairing, onclick: () => void discoverOnce() }, searching ? "Searching…" : "Search again"),
+        )
+      : searching
+        ? h("div", { class: "row small muted", style: "gap: 8px" }, h("span", { class: "spinner" }), "Looking for headsets on your network…")
+        : h(
+            "div",
+            { class: "row spread small muted", style: "gap: 8px" },
+            h("span", { class: "row", style: "gap: 8px" }, icon("headset"), "No headset found. Developer Mode must be on and the Frame awake."),
+            h("button", { class: "btn sm", style: "white-space: nowrap; flex: none", disabled: pairing, onclick: () => void discoverOnce() }, icon("refresh"), "Click to try again"),
+          ),
     s.discovered.length
       ? h(
           "div",
@@ -55,6 +65,7 @@ export function connectView(s: State): HTMLElement {
         )
       : null,
   );
+
 
   const pairBlock = h(
     "div",
