@@ -37,9 +37,11 @@ jobs:
     name: Build
     needs: prepare
     uses: ./.github/workflows/build.yml
+    secrets: inherit
     with:
       version: ${{ needs.prepare.outputs.version }}
       ref: refs/tags/${{ github.event.release.tag_name }}
+      sign_mac: true
 
   attach:
     name: Attach installers to the release
