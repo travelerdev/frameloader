@@ -14,10 +14,12 @@
     "html_handling": "auto-trailing-slash"
   },
   "routes": [
-    // Cloudflare creates the DNS record and certificate for this on deploy.
+    // Cloudflare creates the DNS record and certificate for these on deploy. Every custom domain
+    // must be listed: `wrangler deploy` detaches any domain on the Worker that isn't in this list.
+    { "pattern": "frameloader.com", "custom_domain": true },
     { "pattern": "www.frameloader.com", "custom_domain": true }
   ],
-  // Keep the *.workers.dev address off; the site lives on www.frameloader.com.
+  // Keep the *.workers.dev address off; the site lives on frameloader.com and www.frameloader.com.
   "workers_dev": false,
   // Pull request / branch previews get their own URL (Worker Previews).
   "preview_urls": true,
