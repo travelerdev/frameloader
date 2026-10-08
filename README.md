@@ -6,18 +6,18 @@
 
 [www.frameloader.com](https://www.frameloader.com)
 
-Drop an APK, a Windows app, or a Linux ARM64 build onto Frameloader and it shows up in your Steam Frame's library, under Non-Steam, ready to launch. Open source, cross-platform (macOS, Windows, Linux), and built on the same mechanism Valve's own SteamOS Devkit Client uses.
+Drop an (unbundled) APK, a Windows app, or a Linux ARM64 build onto Frameloader and it shows up in your Steam Frame's library, under Non-Steam, ready to launch.
 
-**Drop it in. It's in your library.**
+Open source, cross-platform (macOS, Windows, Linux), and built on the same mechanism Valve's own SteamOS Devkit Client uses.
 
 ## How it works
 
-Frameloader does not touch Steam's shortcut files or require anything installed on the headset beyond Developer Mode. It speaks Valve's **SteamOS devkit protocol**:
+Frameloader uses the **SteamOS devkit protocol** to install your APK or other app as if it was one you had developed:
 
-1. **Pairing.** The headset runs a small pairing service on port 32000. Frameloader generates an RSA key, posts it to `/register`, and you approve the request on the headset (Settings → Developer → Pair new host). From then on it logs in over SSH with that key. You can also connect with the Developer Mode password instead.
-2. **Upload.** Valve's device-side helper scripts (`devkit-utils`, MIT, vendored unmodified in `vendor/devkit-utils`) are copied to `~/devkit-utils` on the headset. `steamos-prepare-upload` creates `~/devkit-game/<id>/`, and your files are copied there over SFTP.
-3. **Register.** `steam-client-create-shortcut` tells the running Steam client about the title and which runtime to use. Steam adds "Devkit Game: <id>" to your library, no restart needed.
-4. **Launch.** `steam-devkit-rpc run-game` starts it, or you pick it from the headset's library.
+1. **Pairing.** When you turn on dev mode, the headset runs a small pairing service on port 32000. Frameloader generates an RSA key, posts it to `/register`, and you approve the request on the headset by clicking "Pair new host" (Settings → Developer → Pair new host). Then Frameloader can use its RSA key to log in over SSH to upload apps. (You can also connect with the Developer Mode password instead.)
+2. **Upload.** Valve's device-side helper scripts (`devkit-utils`, copied into `vendor/devkit-utils` because they don't seem to publish it on NPM) are copied to `~/devkit-utils` on the headset. `steamos-prepare-upload` creates `~/devkit-game/<id>/`, and your files are copied there over SFTP.
+3. **Register.** `steam-client-create-shortcut` tells the running Steam client about the title and which runtime to use. The frame-side code then adds "Devkit Game: <id>" to your library live. Frameloader then reaches over and renames it to drop the Devkit Game prefix.
+4. **Launch.** Frameloader calls `steam-devkit-rpc run-game` to start it, or you pick it from the headset's library.
 
 | You drop | Runtime (Steam compat tool) | Status |
 |---|---|---|
@@ -25,16 +25,15 @@ Frameloader does not touch Steam's shortcut files or require anything installed 
 | Windows `.exe` or a zip/folder with one | Proton Experimental or Proton (stable) | Works through FEX. Needs a Proton already installed on the headset. |
 | Linux ARM64 build | Steam Linux Runtime 4 (ARM64) | Starts natively; self-contained builds only. |
 | Linux x86-64 build | – | Refused: the Frame won't install the x86-64 runtime for sideloaded titles. |
+| `.apkm` (bundled APKs) | – | Refused: Lepton can only handle an individual APK binary right now, I think? |
 
-For Android apps, Frameloader reads the manifest to pick a name and icon, refuses 32-bit-only and too-new APKs with a plain explanation, and writes Lepton's `lepton-show-flatscreen` marker for non-VR apps so they're actually visible. OBB files dropped with an APK go into `obb/` next to it.
+For Android apps, Frameloader reads the manifest to pick a name and icon, refuses 32-bit-only and too-new APKs, and writes Lepton's `lepton-show-flatscreen` marker for non-VR apps so they're actually visible. OBB files dropped with an APK go into `obb/` next to it.
 
 ## Using it
 
-1. On the headset: Steam Settings → System → **Enable Developer Mode**, then Settings → Developer → **Set User Password**.
-2. Open Frameloader. Headsets with Developer Mode on show up under "Found on your network" (they advertise Valve's devkit service over mDNS); click one, or type a hostname or IP. Click **Pair with headset**. Open Settings → Developer → **Pair new host** on the headset and approve.
+1. On the headset: Steam Settings → System → **Enable Developer Mode**. (I'd also recommend doing Settings → Developer → **Set User Password** for security if you're doing this.)
+2. Open Frameloader. Headsets with Developer Mode on show up under "Found on your network" (they advertise Valve's devkit service over mDNS); click one, or type a hostname or IP. Click **Pair with headset** in Frameloader. On your Frame, open Settings → Developer → **Pair new host** and approve.
 3. Drop a file. Check the name, pick a runtime if there's a choice, click **Install to Frame**.
-
-Logs for Android titles stream straight into the app (row → Logs). The Activity drawer at the bottom shows every command sent to the headset.
 
 ## Development
 
@@ -62,23 +61,26 @@ The renderer can be previewed in a normal browser with simulated data: serve `ap
 
 `pnpm install` must be allowed to run the `electron` and `esbuild` build scripts (see `pnpm-workspace.yaml`). If Electron's binary is missing, run `node node_modules/electron/install.js`.
 
+## Agent use
+
+This app is heavily agent-coded, but the expectation is that architectural decisions should be human-made and code should be human-reviewed. We're dealing with system-level access, so we should be cautious about Agentic hallucinations or missed cases.
+
 ## Privacy
 
-Frameloader has no analytics, telemetry, crash reporting or accounts. It connects to your headset on your local network: SSH, Valve's devkit pairing service on port 32000, and mDNS discovery. The only other request is an update check: twice a day it asks GitHub's public releases API for the latest version number, sending nothing but the app version in its User-Agent. It never downloads anything, and Settings → Updates turns it off. A remembered password is encrypted with the operating system's secure storage. The website loads no third-party scripts, fonts or cookies.
+Frameloader has no analytics, telemetry, crash reporting or accounts. It connects to your headset on your local network: SSH, Valve's devkit pairing service on port 32000, and mDNS discovery. The only other request is an update check: twice a day it asks GitHub's public releases API for the latest version number. It never downloads anything, and Settings → Updates turns it off if you want a truly LAN-only setup. Any remembered passwords should be encrypted with the operating system's secure storage.
 
 ## Builds and releases
 
 Every push to `main` and every pull request runs `.github/workflows/build.yml`: typecheck, tests, the website build, then installers for macOS (arm64 and x64), Windows x64, and Linux x64 and arm64. The installers are attached to the run as artifacts.
 
-To ship a release:
+To ship a release you must be an Admin:
 
 1. On GitHub, go to **Releases → Draft a new release**.
 2. Create a new tag named `vX.Y.Z` (for example `v0.1.0`) targeting `main`, write the notes (or use **Generate release notes**), and publish.
 3. Publishing runs `.github/workflows/release.yml`, which builds that tag stamped as version `X.Y.Z` and attaches the installers to the release. It takes a few minutes. If it fails, re-run the workflow; uploads replace any partial ones.
+4. The release step will attempt to sign the mac release before attaching it to the public release (to avoid the security blocks Apple requires on all Mac systems after 15 or 16 - somewhere in there). This step requires an org admin's approval because it uses the org's secret keys read from the environment. It will hang until you contact Zack.
 
-Nothing is pushed to `main`, so this works with branch protection. The version in `apps/desktop/package.json` is only what local and CI builds report; releases take their version from the tag.
-
-**Signing.** Release builds of the Mac app are signed with a Developer ID certificate and notarized, so they open normally. The certificate and the App Store Connect notarization key live only in the `release-signing` GitHub environment as `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. That environment only accepts `v*` tags and needs approval, so the release run pauses until you approve it. Push and pull-request builds are ad-hoc signed; to open one on macOS 15 or later, use System Settings → Privacy & Security → Open Anyway, or run `xattr -dr com.apple.quarantine /Applications/Frameloader.app`. Windows builds are unsigned, so SmartScreen warns before the installer runs.
+The version in `apps/desktop/package.json` is only what local and CI builds report; releases take their version from the tag at build time.
 
 Installed apps notice new releases on their own: they check GitHub's releases API and show a banner with a link once a release has its installers attached. Nothing is downloaded or installed automatically, and Settings → Updates turns the check off.
 
@@ -96,7 +98,7 @@ Workers Builds settings (Worker → Settings → Build):
 | Preview command | `pnpm exec wrangler preview` |
 | Build variables | `PNPM_VERSION=11.24.0`, `SKIP_DEPENDENCY_INSTALL=1`, `ELECTRON_SKIP_BINARY_DOWNLOAD=1` |
 
-Locally: `pnpm preview:web` runs the built site in the Workers runtime, and `pnpm deploy:web` deploys by hand.
+Locally: `pnpm preview:web` runs the built site in the Workers runtime, and `pnpm deploy:web` deploys by hand using your local wrangler auth.
 
 ## Troubleshooting
 
