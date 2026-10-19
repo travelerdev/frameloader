@@ -138,7 +138,7 @@ function wireIpc(): void {
       title: "Choose an app to install",
       properties: ["openFile", "openDirectory", "multiSelections"],
       filters: [
-        { name: "Apps", extensions: ["apk", "exe", "zip", "obb"] },
+        { name: "Apps", extensions: ["apk", "apkm", "xapk", "apks", "exe", "zip", "obb"] },
         { name: "All files", extensions: ["*"] },
       ],
     });

@@ -25,9 +25,13 @@ Frameloader uses the **SteamOS devkit protocol** to install your APK or other ap
 | Windows `.exe` or a zip/folder with one | Proton Experimental or Proton (stable) | Works through FEX. Needs a Proton already installed on the headset. |
 | Linux ARM64 build | Steam Linux Runtime 4 (ARM64) | Starts natively; self-contained builds only. |
 | Linux x86-64 build | – | Refused: the Frame won't install the x86-64 runtime for sideloaded titles. |
-| `.apkm` (bundled APKs) | – | Refused: Lepton can only handle an individual APK binary right now, I think? |
+| `.apkm` / `.xapk` / `.apks` (split APK bundles) | Lepton | Merged on your computer into one APK first (see below). |
 
 For Android apps, Frameloader reads the manifest to pick a name and icon, refuses 32-bit-only and too-new APKs, and writes Lepton's `lepton-show-flatscreen` marker for non-VR apps so they're actually visible. OBB files dropped with an APK go into `obb/` next to it.
+
+### Split bundles
+
+Lepton installs a title with a plain `adb install <one apk>` every time it launches (its "baked" container data is wiped on exit), so there is nowhere for the splits of an app bundle to live. Frameloader therefore does what APKEditor/antisplit tools do, in-process and without Java: it unpacks the bundle, keeps the base plus the `arm64-v8a`, density and language splits (other ABIs are dropped), merges their files and `resources.arsc` tables into one APK, clears the "needs splits" markers in the manifest, and re-signs the result with APK Signature Scheme v2 using a key it generates once in its user-data folder. The app keeps its original package name and version, but its signature changes, so anything that checks its signing certificate (Play licensing, some SafetyNet-style checks) will notice.
 
 ## Using it
 

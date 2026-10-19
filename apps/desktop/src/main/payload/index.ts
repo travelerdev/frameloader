@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, resolve as resolvePath, sep } from "node:path";
 import yauzl from "yauzl";
 import type { ExecutableCandidate, PayloadInfo, PayloadKind } from "../../shared/ipc";
+import { config } from "../config";
 import { apkIssues, inspectApk } from "./apk";
 import { readHead, sniffBinary } from "./binary";
+import { BUNDLE_EXTS, mergeBundle, zipLooksLikeBundle } from "./bundle";
 
 export interface Payload {
   info: PayloadInfo;
@@ -42,39 +44,67 @@ const HELPER_DIRS = /(^|\/)(_commonredist|redist|directx|engine|monobleedingedge
 export async function inspectPaths(paths: string[]): Promise<PayloadInfo> {
   if (!paths.length) throw new Error("Nothing was dropped.");
   const apks = paths.filter((p) => extname(p).toLowerCase() === ".apk");
+  const bundles = paths.filter((p) => BUNDLE_EXTS.includes(extname(p).toLowerCase()));
   const obbs = paths.filter((p) => extname(p).toLowerCase() === ".obb");
-  const others = paths.filter((p) => !apks.includes(p) && !obbs.includes(p));
-  if (apks.length > 1) throw new Error("Drop one APK at a time. Split APKs aren't supported; use a universal APK.");
-  if (apks.length === 1 && others.length) throw new Error("Drop an APK on its own (OBB files may come with it).");
+  const others = paths.filter((p) => !apks.includes(p) && !bundles.includes(p) && !obbs.includes(p));
+  if (apks.length + bundles.length > 1) {
+    if (apks.length > 1 && apks.every((p) => /^(base|split_[^/]+)\.apk$/i.test(basename(p)))) throw new Error("Those look like the pieces of a split APK. Drop the bundle they came in (.apkm, .xapk or .apks) instead.");
+    throw new Error("Drop one app at a time.");
+  }
+  if (apks.length + bundles.length === 1 && others.length) throw new Error("Drop an APK on its own (OBB files may come with it).");
   if (apks.length === 1) return inspectApkPayload(apks[0]!, obbs);
+  if (bundles.length === 1) return inspectBundlePayload(bundles[0]!, obbs);
   if (obbs.length && !others.length) throw new Error("OBB files need their APK; drop them together.");
-  if (others.length !== 1) throw new Error("Drop a single app: an APK, an .exe, a zip, or a folder.");
+  if (others.length !== 1) throw new Error("Drop a single app: an APK, a split bundle, an .exe, a zip, or a folder.");
   const target = others[0]!;
   const st = statSync(target);
   if (st.isDirectory()) return inspectDirPayload(target, undefined);
   const ext = extname(target).toLowerCase();
-  if (ext === ".zip") return inspectZipPayload(target);
+  if (ext === ".zip") return (await zipLooksLikeBundle(target)) ? inspectBundlePayload(target, obbs) : inspectZipPayload(target);
   if (ext === ".exe" || !ext || ext === ".sh" || ext === ".x86_64" || ext === ".bin" || ext === ".elf") return inspectSingleExecutable(target);
-  throw new Error(`Frameloader doesn't know what to do with a ${ext || "file without an extension"} file. Drop an APK, .exe, zip, or folder.`);
+  throw new Error(`Frameloader doesn't know what to do with a ${ext || "file without an extension"} file. Drop an APK, a split bundle (.apkm/.xapk), .exe, zip, or folder.`);
 }
 
-async function inspectApkPayload(apkPath: string, obbPaths: string[]): Promise<PayloadInfo> {
+interface ApkExtras {
+  sourcePaths?: string[];
+  tempDir?: string;
+  notes?: string[];
+  warnings?: string[];
+}
+
+async function inspectApkPayload(apkPath: string, obbPaths: string[], extras: ApkExtras = {}): Promise<PayloadInfo> {
   const facts = await inspectApk(apkPath);
   facts.obbFiles = obbPaths.map((p) => basename(p));
   const size = statSync(apkPath).size + obbPaths.reduce((a, p) => a + statSync(p).size, 0);
   const info: PayloadInfo = {
     id: randomUUID(),
     kind: "apk",
-    sourcePaths: [apkPath, ...obbPaths],
+    sourcePaths: extras.sourcePaths ?? [apkPath, ...obbPaths],
     name: facts.label,
     sizeBytes: size,
     apk: facts,
     issues: apkIssues(facts),
-    warnings: [],
+    warnings: [...(extras.notes ?? []), ...(extras.warnings ?? [])],
   };
   if (!facts.abis.length) info.warnings.push("No native code; should run on any device.");
-  payloads.set(info.id, { info, apkPath, obbPaths });
+  payloads.set(info.id, { info, apkPath, obbPaths, tempDir: extras.tempDir });
   return info;
+}
+
+/** A split bundle becomes one merged, re-signed APK in a temp folder. */
+async function inspectBundlePayload(bundlePath: string, obbPaths: string[]): Promise<PayloadInfo> {
+  const merged = await mergeBundle(bundlePath, config.apkSigningKeyPath());
+  try {
+    return await inspectApkPayload(merged.apkPath, [...merged.obbPaths, ...obbPaths], {
+      sourcePaths: [bundlePath, ...obbPaths],
+      tempDir: merged.tempDir,
+      notes: merged.notes,
+      warnings: merged.warnings,
+    });
+  } catch (e) {
+    rmSync(merged.tempDir, { recursive: true, force: true });
+    throw e;
+  }
 }
 
 function scanExecutables(root: string): ExecutableCandidate[] {
