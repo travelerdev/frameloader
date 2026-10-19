@@ -33,6 +33,8 @@ For Android apps, Frameloader reads the manifest to pick a name and icon, refuse
 
 Lepton installs a title with a plain `adb install <one apk>` every time it launches (its "baked" container data is wiped on exit), so there is nowhere for the splits of an app bundle to live. Frameloader therefore does what APKEditor/antisplit tools do, in-process and without Java: it unpacks the bundle, keeps the base plus the `arm64-v8a`, density and language splits (other ABIs are dropped), merges their files and `resources.arsc` tables into one APK, clears the "needs splits" markers in the manifest, and re-signs the result with APK Signature Scheme v2 using a key it generates once in its user-data folder. The app keeps its original package name and version, but its signature changes, so anything that checks its signing certificate (Play licensing, some SafetyNet-style checks) will notice.
 
+While it has the APK open, Frameloader also applies one Lepton compatibility patch: Lepton ships no clipboard service, so `getSystemService(CLIPBOARD_SERVICE)` returns null and every SDL2/SDL3 app dies in `SDLActivity.onCreate` registering a clip-changed listener. The merge blanks those `ClipboardManager.addPrimaryClipChangedListener` / `removePrimaryClipChangedListener` calls in the bytecode (void calls become nops, so the dex still verifies). The review screen says when this happened. Plain `.apk` drops are uploaded untouched.
+
 ## Using it
 
 1. On the headset: Steam Settings → System → **Enable Developer Mode**. (I'd also recommend doing Settings → Developer → **Set User Password** for security if you're doing this.)

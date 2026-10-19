@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { unmarkSplitRequired } from "./axml";
 import { mergeArsc, parseArsc, writeArsc, type MergeReport } from "./arsc";
+import { nopVoidCalls, type MethodRef } from "./dex";
 import { signApkV2, type SigningKey } from "./sign";
 import { inflateEntry, makeEntry, readRawEntries, ZipWriter, type RawEntry } from "./zip";
 
@@ -12,6 +13,8 @@ export interface MergeInput {
   splits: string[];
   out: string;
   key: SigningKey;
+  /** Void method calls to blank out of the bytecode (see dex.ts). */
+  nopCalls?: MethodRef[];
 }
 
 export interface MergeResult {
@@ -23,6 +26,8 @@ export interface MergeResult {
   renamedDex: string[];
   manifestChanges: string[];
   resources: MergeReport;
+  /** Calls removed by `nopCalls`. */
+  patchedCalls: number;
 }
 
 // Signature files and per-APK metadata that must not survive the merge.
@@ -39,7 +44,7 @@ export async function mergeSplits(input: MergeInput): Promise<MergeResult> {
   const manifest = inflateEntry(manifestEntry);
   const table = arscEntry ? parseArsc(inflateEntry(arscEntry)) : undefined;
 
-  const result: MergeResult = { added: 0, clashes: [], renamedDex: [], manifestChanges: [], resources: { addedConfigs: 0, mergedEntries: 0, conflicts: 0 } };
+  const result: MergeResult = { added: 0, clashes: [], renamedDex: [], manifestChanges: [], resources: { addedConfigs: 0, mergedEntries: 0, conflicts: 0 }, patchedCalls: 0 };
   let nextDex = 2;
   while (byName.has(`classes${nextDex}.dex`)) nextDex++;
 
@@ -72,6 +77,17 @@ export async function mergeSplits(input: MergeInput): Promise<MergeResult> {
   }
 
   result.manifestChanges = unmarkSplitRequired(manifest);
+
+  if (input.nopCalls?.length) {
+    for (const [name, e] of byName) {
+      if (!/^classes\d*\.dex$/.test(name)) continue;
+      const dex = inflateEntry(e);
+      const n = nopVoidCalls(dex, input.nopCalls);
+      if (!n) continue;
+      result.patchedCalls += n;
+      byName.set(name, makeEntry(name, dex, 8));
+    }
+  }
 
   const writer = new ZipWriter(input.out);
   // Manifest first, then the resource table (stored and 4-byte aligned, as

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manifestIdentity, parseAxml, unmarkSplitRequired } from "../src/main/apk/axml";
 import { mergeArsc, parseArsc, writeArsc, type ResTable } from "../src/main/apk/arsc";
+import { fixChecksums, LEPTON_CLIPBOARD_CALLS, nopVoidCalls } from "../src/main/apk/dex";
 import { mergeSplits } from "../src/main/apk/merge";
 import { contentDigest, loadOrCreateSigningKey, selfSignedCert, signApkV2 } from "../src/main/apk/sign";
 import { inflateEntry, makeEntry, readRawEntries, ZipWriter } from "../src/main/apk/zip";
@@ -151,6 +152,22 @@ test("resource table round-trips and merges a config split", async () => {
   assert.equal(merged.strings.strings[added!.entries[0]!.value!.data], "from-split");
   // Merging the same split again changes nothing.
   assert.deepEqual(mergeArsc(table, split), { addedConfigs: 0, mergedEntries: 0, conflicts: 0 });
+});
+
+test("dex: walks real bytecode without touching it, and recomputes header hashes exactly", async () => {
+  const dex = await entry(FIXTURE, "classes.dex");
+  const original = Buffer.from(dex);
+  assert.equal(nopVoidCalls(dex, LEPTON_CLIPBOARD_CALLS), 0);
+  assert.ok(dex.equals(original));
+  // A no-op edit must reproduce dx/d8's own checksum and signature.
+  dex.fill(0, 8, 32);
+  fixChecksums(dex);
+  assert.ok(dex.equals(original), "checksum/signature round-trip");
+  // Blanking a call the fixture does make.
+  const n = nopVoidCalls(dex, [{ class: "Landroid/app/Activity;", name: "setContentView" }]);
+  assert.ok(n >= 1, "fixture calls setContentView");
+  assert.ok(!dex.equals(original));
+  assert.notEqual(dex.readUInt32LE(8), original.readUInt32LE(8), "checksum updated");
 });
 
 test("signing: self-signed certificate and a v2 block Android's rules accept", () => {
