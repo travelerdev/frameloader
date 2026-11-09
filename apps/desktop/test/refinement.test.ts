@@ -40,8 +40,26 @@ test("the rename script finds the devkit shortcut by folder and renames it", asy
     setTimeout,
   };
   const result = await runInNewContext(renameJs("Termux_Float", "/home/steamos/devkit-game/Termux_Float/", "Termux:Float"), ctx);
-  assert.deepEqual(JSON.parse(JSON.stringify(result)), { appid: 22, before: "Devkit Game: Termux_Float" });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { appid: 22, before: "Devkit Game: Termux_Float", launchOptions: "unchanged" });
   assert.deepEqual(calls, [["name", 22, "Termux:Float"], ["sort", 22, "Termux:Float"]]);
+});
+
+test("the rename script sets launch options, and only clears ones Frameloader wrote", async () => {
+  const run = async (current: string, launch: string) => {
+    const calls: unknown[][] = [];
+    const ctx = {
+      appStore: { allApps: [{ appid: 22, app_type: 1073741824, display_name: "X" }] },
+      appDetailsStore: { GetAppDetails: () => ({ strShortcutExe: '"/d/X/app.apk"', strShortcutStartDir: "/d/X", strShortcutLaunchOptions: current }) },
+      SteamClient: { Apps: { SetShortcutName: () => undefined, SetShortcutLaunchOptions: (...a: unknown[]) => calls.push(a) } },
+      setTimeout,
+    };
+    const r = await runInNewContext(renameJs("X", "/d/X", "X", launch), ctx);
+    return { state: r.launchOptions, calls };
+  };
+  assert.deepEqual(await run("", "A='1' %command%"), { state: "set", calls: [[22, "A='1' %command%"]] });
+  assert.deepEqual(await run("A='1' %command%", "A='1' %command%"), { state: "unchanged", calls: [] });
+  assert.deepEqual(await run("A='1' %command%", ""), { state: "cleared", calls: [[22, ""]] });
+  assert.deepEqual(await run("gamemoderun %command%", ""), { state: "kept", calls: [] });
 });
 
 test("a lone program is staged by itself, not with its whole folder", async () => {

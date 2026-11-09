@@ -1,4 +1,4 @@
-import type { AppSettings, ConnectionState, DeviceProfile, DiscoveredFrame, InstallProgress, InstallResult, InstallStep, PayloadInfo, RuntimeId, RuntimeOption, TitleInfo, UpdateInfo } from "../shared/ipc";
+import type { AppSettings, ConnectionState, DeviceProfile, DiscoveredFrame, InstallProgress, InstallResult, InstallStep, PayloadInfo, QuestPatchId, RuntimeId, RuntimeOption, TitleInfo, UpdateInfo } from "../shared/ipc";
 
 export interface ConnectForm {
   host: string;
@@ -22,6 +22,8 @@ export interface ReviewForm {
   flatscreen: boolean;
   launchAfter: boolean;
   advancedOpen: boolean;
+  /** Quest compatibility patches to apply; starts as everything detected. */
+  questPatches: QuestPatchId[];
 }
 
 export interface InstallState {

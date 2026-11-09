@@ -1,8 +1,11 @@
 // The install flow: prepare folder, upload, register with Steam, launch.
-import { statSync } from "node:fs";
-import { basename, posix } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join, posix } from "node:path";
 import type { InstallProgress, InstallRequest, InstallResult, InstallStep } from "../shared/ipc";
 import { activity } from "./activity";
+import { applyQuestPatches } from "./apk/quest";
+import { loadOrCreateSigningKey } from "./apk/sign";
 import { config } from "./config";
 import { createShortcut, prepareUpload, runGame, syncDevkitUtils, type ShortcutParms, type TitleMeta } from "./devkitUtils";
 import { friendlyError } from "./errors";
@@ -10,8 +13,9 @@ import { getPayload } from "./payload";
 import { RUNTIMES, settingsFor } from "./runtimes";
 import { session } from "./session";
 import { shq } from "./ssh";
-import { renameDevkitTitle } from "./steamClient";
+import { configureDevkitTitle } from "./steamClient";
 import { gameIdProblem } from "../shared/gameid";
+import { openXrLoaderPath } from "./vendor";
 
 export type ProgressSink = (p: InstallProgress) => void;
 
@@ -38,6 +42,7 @@ export async function install(req: InstallRequest, progress: ProgressSink): Prom
     progress(next);
   };
   let current: InstallStep = "prepare";
+  let patchDir: string | undefined;
   try {
     const payload = getPayload(req.payloadId);
     if (!payload) throw new Error("That file isn't available anymore. Drop it again.");
@@ -58,24 +63,46 @@ export async function install(req: InstallRequest, progress: ProgressSink): Prom
     const { directory } = await prepareUpload(ssh, info.home, req.gameId);
     if (!directory.startsWith(info.home) || !directory.endsWith("/" + req.gameId)) throw new Error(`The headset returned an unexpected folder: ${directory}`);
     await ssh.exec(`find ${shq(directory)} -mindepth 1 -delete`, { quiet: true });
+    // Quest compatibility patches: rewrite and re-sign a copy of the APK, only when asked for.
+    let apkPath = payload.apkPath;
+    const offered = new Set(payload.info.apk?.questPatches?.map((o) => o.id) ?? []);
+    const patches = (req.questPatches ?? []).filter((id) => offered.has(id));
+    let sizeBytes = payload.info.sizeBytes;
+    if (payload.info.kind === "apk" && apkPath && patches.length) {
+      set("prepare", { status: "active", detail: "Applying Quest compatibility patches" });
+      patchDir = mkdtempSync(join(tmpdir(), "frameloader-patch-"));
+      const out = join(patchDir, basename(apkPath));
+      const r = await applyQuestPatches({
+        input: apkPath,
+        out,
+        key: loadOrCreateSigningKey(config.apkSigningKeyPath()),
+        patches,
+        openXrLoader: patches.includes("openxr-loader") ? readFileSync(openXrLoaderPath()) : undefined,
+      });
+      for (const n of r.notes) activity.info(n);
+      for (const id of r.unused) activity.push("err", `The "${id}" patch found nothing to change.`);
+      activity.info("Re-signed the patched APK with Frameloader's own key.");
+      sizeBytes += statSync(out).size - statSync(apkPath).size;
+      apkPath = out;
+    }
     set("prepare", { status: "done", detail: directory });
 
     // 2. upload
     current = "upload";
-    set("upload", { status: "active", detail: "Uploading", bytes: 0, total: payload.info.sizeBytes });
+    set("upload", { status: "active", detail: "Uploading", bytes: 0, total: sizeBytes });
     let argv: string[];
     let flatscreen = false;
-    const meta: TitleMeta = { name: req.name.trim() || req.gameId, kind: payload.info.kind, installedAt: new Date().toISOString(), sizeBytes: payload.info.sizeBytes };
-    if (payload.info.kind === "apk" && payload.apkPath && payload.info.apk) {
-      const apkName = safeApkName(payload.apkPath);
+    const meta: TitleMeta = { name: req.name.trim() || req.gameId, kind: payload.info.kind, installedAt: new Date().toISOString(), sizeBytes };
+    if (payload.info.kind === "apk" && apkPath && payload.info.apk) {
+      const apkName = safeApkName(apkPath);
       const remoteApk = posix.join(directory, apkName);
-      const total = payload.info.sizeBytes;
+      const total = sizeBytes;
       let done = 0;
-      await ssh.putFile(payload.apkPath, remoteApk + ".part", {
+      await ssh.putFile(apkPath, remoteApk + ".part", {
         mode: 0o755,
         onProgress: (sent) => set("upload", { status: "active", bytes: done + sent, total }),
       });
-      done += statSync(payload.apkPath).size;
+      done += statSync(apkPath).size;
       await ssh.exec(`mv -f ${shq(remoteApk + ".part")} ${shq(remoteApk)}`, { quiet: true });
       if (payload.obbPaths.length) {
         await ssh.exec(`mkdir -p ${shq(posix.join(directory, "obb"))}`, { quiet: true });
@@ -95,6 +122,7 @@ export async function install(req: InstallRequest, progress: ProgressSink): Prom
       meta.versionName = payload.info.apk.versionName;
       meta.isVr = payload.info.apk.isVr;
       meta.flatscreen = flatscreen;
+      if (patches.length) meta.questPatches = patches;
     } else if (payload.rootDir) {
       const start = (req.startCommand ?? payload.info.candidates?.[0]?.relPath ?? "").trim();
       if (!start) throw new Error("Pick the executable to start.");
@@ -108,7 +136,7 @@ export async function install(req: InstallRequest, progress: ProgressSink): Prom
     }
     await ssh.writeFile(posix.join(directory, ".frameloader.json"), JSON.stringify(meta, null, 2) + "\n");
     await ssh.exec(`chmod -R u+rwX,go+rX ${shq(directory)}`, { quiet: true });
-    set("upload", { status: "done", detail: "Uploaded", bytes: payload.info.sizeBytes, total: payload.info.sizeBytes });
+    set("upload", { status: "done", detail: "Uploaded", bytes: sizeBytes, total: sizeBytes });
 
     // 3. register
     current = "register";
@@ -127,8 +155,10 @@ export async function install(req: InstallRequest, progress: ProgressSink): Prom
     const reply = await createShortcut(ssh, info.home, parms);
     activity.info(`Steam registered "${req.gameId}"${reply ? `: ${reply}` : ""}`);
     set("register", { status: "active", detail: "Setting the library name" });
-    const renamed = await renameDevkitTitle(ssh, req.gameId, directory, meta.name);
-    set("register", { status: "done", detail: renamed ? "In your library under Non-Steam" : `In your library under Non-Steam as “Devkit Game: ${req.gameId}”` });
+    // Steam ignores the env.json above for devkit launches; launch options are what it applies.
+    const shortcut = await configureDevkitTitle(ssh, req.gameId, directory, meta.name, req.env);
+    if (!shortcut.envApplied) activity.push("err", "The environment variables couldn't be set in Steam's launch options, so the game won't see them.");
+    set("register", { status: "done", detail: shortcut.renamed ? "In your library under Non-Steam" : `In your library under Non-Steam as “Devkit Game: ${req.gameId}”` });
 
     // 4. launch
     current = "launch";
@@ -146,5 +176,7 @@ export async function install(req: InstallRequest, progress: ProgressSink): Prom
     for (const s of steps.slice(steps.indexOf(current) + 1)) set(s, { status: "skipped" });
     activity.push("err", `Install failed: ${message}`);
     return { ok: false, gameId: req.gameId, name: req.name, error: message };
+  } finally {
+    if (patchDir) rmSync(patchDir, { recursive: true, force: true });
   }
 }

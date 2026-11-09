@@ -28,6 +28,10 @@ const base = {
         "**/*",
         "!**/__pycache__/**"
       ]
+    },
+    {
+      "from": "vendor/openxr-loader",
+      "to": "openxr-loader"
     }
   ],
   "mac": {

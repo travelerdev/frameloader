@@ -84,6 +84,16 @@ export interface ExecutableCandidate {
   score: number;
 }
 
+/** Edits Frameloader can make so an app built for Meta Quest runs under Lepton. */
+export type QuestPatchId = "openxr-loader" | "ovrplugin-runtime" | "unity-oculus-check";
+
+export interface QuestPatchOffer {
+  id: QuestPatchId;
+  title: string;
+  /** One or two plain sentences: what's wrong on the Frame and what the patch does. */
+  explanation: string;
+}
+
 export interface ApkFacts {
   package: string;
   label: string;
@@ -99,6 +109,10 @@ export interface ApkFacts {
   launchable?: boolean;
   /** A Meta Quest Home environment: scenery for the Quest's home space, not an app. */
   questEnvironment?: boolean;
+  /** Quest compatibility patches that apply to this APK; offered on, by default. */
+  questPatches?: QuestPatchOffer[];
+  /** True when the APK reaching Frameloader was already re-signed (a merged bundle). */
+  resigned?: boolean;
 }
 
 export interface PayloadInfo {
@@ -139,6 +153,8 @@ export interface InstallRequest {
   env: Record<string, string>;
   flatscreen: boolean;
   launchAfter: boolean;
+  /** Quest compatibility patches to apply before uploading (APKs only). */
+  questPatches?: QuestPatchId[];
 }
 
 export type InstallStep = "prepare" | "upload" | "register" | "launch";

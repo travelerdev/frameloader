@@ -1,5 +1,5 @@
 // Everything the views can do, as plain functions over the bridge + store.
-import type { InstallProgress, InstallRequest, InstallStep, PayloadInfo, RuntimeId } from "../shared/ipc";
+import type { InstallProgress, InstallRequest, InstallStep, PayloadInfo, QuestPatchId, RuntimeId } from "../shared/ipc";
 import { toGameId } from "../shared/gameid";
 import { api } from "./api";
 import { setBusy, store, toast, type ReviewForm } from "./state";
@@ -125,6 +125,7 @@ function reviewFor(p: PayloadInfo, runtimes: { id: RuntimeId; available: boolean
     flatscreen: p.apk ? !p.apk.isVr : false,
     launchAfter: true,
     advancedOpen: false,
+    questPatches: p.apk?.questPatches?.map((o) => o.id) ?? [],
   };
 }
 
@@ -163,6 +164,15 @@ export function updateReview(patch: Partial<ReviewForm>): void {
   store.set((s) => (s.review ? { review: { ...s.review, ...patch } } : {}));
 }
 
+/** Turn one Quest compatibility patch on or off, from the current state (not a render-time copy). */
+export function setQuestPatch(id: QuestPatchId, on: boolean): void {
+  store.set((s) => {
+    if (!s.review) return {};
+    const rest = s.review.questPatches.filter((x) => x !== id);
+    return { review: { ...s.review, questPatches: on ? [...rest, id] : rest } };
+  });
+}
+
 export function setReviewName(name: string): void {
   store.set((s) => {
     if (!s.review) return {};
@@ -191,6 +201,7 @@ export async function startInstall(): Promise<void> {
     env: Object.fromEntries(review.env.filter((e) => e.k.trim()).map((e) => [e.k.trim(), e.v])),
     flatscreen: review.flatscreen,
     launchAfter: review.launchAfter,
+    questPatches: review.questPatches,
   };
   const steps = Object.fromEntries(STEPS.map((s) => [s, { step: s, status: "pending" } as InstallProgress])) as Record<InstallStep, InstallProgress>;
   requestScrollTop();

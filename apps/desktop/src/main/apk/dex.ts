@@ -80,8 +80,8 @@ function insnWidth(buf: Buffer, off: number): number {
   return WIDTH[op]!;
 }
 
-/** Replace invoke-virtual calls to `targets` with nops, in place. Returns how many calls were blanked. */
-export function nopVoidCalls(dex: Buffer, targets: MethodRef[]): number {
+/** Method ids in `dex` that name one of `targets`. */
+function methodIndices(dex: Buffer, targets: MethodRef[]): Set<number> {
   if (dex.toString("latin1", 0, 4) !== "dex\n") throw new Error("not a dex file");
   const stringIdsSize = dex.readUInt32LE(0x38);
   const stringIdsOff = dex.readUInt32LE(0x3c);
@@ -89,8 +89,6 @@ export function nopVoidCalls(dex: Buffer, targets: MethodRef[]): number {
   const typeIdsOff = dex.readUInt32LE(0x44);
   const methodIdsSize = dex.readUInt32LE(0x58);
   const methodIdsOff = dex.readUInt32LE(0x5c);
-  const classDefsSize = dex.readUInt32LE(0x60);
-  const classDefsOff = dex.readUInt32LE(0x64);
 
   const wanted = new Map<string, number>(); // string -> string idx
   const need = new Set<string>(targets.flatMap((t) => [t.class, t.name]));
@@ -111,23 +109,13 @@ export function nopVoidCalls(dex: Buffer, targets: MethodRef[]): number {
     const nameIdx = dex.readUInt32LE(p + 4);
     if (targets.some((t) => t.class === cls && wanted.get(t.name) === nameIdx)) methods.add(i);
   }
-  if (!methods.size) return 0;
+  return methods;
+}
 
-  let patched = 0;
-  const patchCode = (codeOff: number) => {
-    const insnsSize = dex.readUInt32LE(codeOff + 12);
-    const start = codeOff + 16;
-    const end = start + insnsSize * 2;
-    for (let p = start; p < end; ) {
-      const w = insnWidth(dex, p);
-      const op = dex[p]!;
-      if ((op === INVOKE_VIRTUAL || op === INVOKE_VIRTUAL_RANGE) && methods.has(dex.readUInt16LE(p + 2))) {
-        dex.fill(0, p, p + 6);
-        patched++;
-      }
-      p += w * 2;
-    }
-  };
+/** Call `visit` for every method that has code, with its method id and code_item offset. */
+function forEachCode(dex: Buffer, visit: (methodIdx: number, codeOff: number) => void): void {
+  const classDefsSize = dex.readUInt32LE(0x60);
+  const classDefsOff = dex.readUInt32LE(0x64);
   for (let c = 0; c < classDefsSize; c++) {
     const dataOff = dex.readUInt32LE(classDefsOff + c * 32 + 24);
     if (!dataOff) continue;
@@ -141,14 +129,88 @@ export function nopVoidCalls(dex: Buffer, targets: MethodRef[]): number {
       [, p] = uleb128(dex, p);
       [, p] = uleb128(dex, p);
     }
+    let idx = 0;
     for (let i = 0; i < direct + virtual; i++) {
-      let codeOff: number;
-      [, p] = uleb128(dex, p);
+      if (i === direct) idx = 0; // method_idx_diff restarts for the virtual list
+      let diff: number, codeOff: number;
+      [diff, p] = uleb128(dex, p);
       [, p] = uleb128(dex, p);
       [codeOff, p] = uleb128(dex, p);
-      if (codeOff) patchCode(codeOff);
+      idx += diff;
+      if (codeOff) visit(idx, codeOff);
     }
   }
+}
+
+/** Replace invoke-virtual calls to `targets` with nops, in place. Returns how many calls were blanked. */
+export function nopVoidCalls(dex: Buffer, targets: MethodRef[]): number {
+  const methods = methodIndices(dex, targets);
+  if (!methods.size) return 0;
+  let patched = 0;
+  forEachCode(dex, (_, codeOff) => {
+    const insnsSize = dex.readUInt32LE(codeOff + 12);
+    const start = codeOff + 16;
+    const end = start + insnsSize * 2;
+    for (let p = start; p < end; ) {
+      const w = insnWidth(dex, p);
+      const op = dex[p]!;
+      if ((op === INVOKE_VIRTUAL || op === INVOKE_VIRTUAL_RANGE) && methods.has(dex.readUInt16LE(p + 2))) {
+        dex.fill(0, p, p + 6);
+        patched++;
+      }
+      p += w * 2;
+    }
+  });
+  if (patched) fixChecksums(dex);
+  return patched;
+}
+
+/** True when `dex` defines (has code for) any of `targets`. */
+export function definesMethod(dex: Buffer, targets: MethodRef[]): boolean {
+  const methods = methodIndices(dex, targets);
+  if (!methods.size) return false;
+  let found = false;
+  forEachCode(dex, (idx) => {
+    if (methods.has(idx)) found = true;
+  });
+  return found;
+}
+
+/**
+ * Unity's Oculus XR Plugin decides whether it's on a Quest with
+ * `Build.MANUFACTURER.toLowerCase().contains("oculus")`, and when it isn't,
+ * quits the app ("attempting to run on a non-Oculus device"). Lepton reports
+ * Valve as the manufacturer and overrides any injected ro.product.manufacturer.
+ */
+export const UNITY_OCULUS_CHECK: MethodRef = { class: "Lcom/unity/oculus/OculusUnity;", name: "getIsOnOculusHardware" };
+
+/**
+ * Rewrite the bodies of boolean methods in `targets` to `return true`, in
+ * place (const/4 v0, #1; return v0; the rest nops). Skips methods that
+ * don't return boolean, have try blocks, or are too short. Returns how many
+ * were rewritten.
+ */
+export function forceReturnTrue(dex: Buffer, targets: MethodRef[]): number {
+  const methods = methodIndices(dex, targets);
+  if (!methods.size) return 0;
+  const methodIdsOff = dex.readUInt32LE(0x5c);
+  const protoIdsOff = dex.readUInt32LE(0x4c);
+  const stringIdsOff = dex.readUInt32LE(0x3c);
+  let patched = 0;
+  forEachCode(dex, (idx, codeOff) => {
+    if (!methods.has(idx)) return;
+    const proto = dex.readUInt16LE(methodIdsOff + idx * 8 + 2);
+    const shorty = readString(dex, dex.readUInt32LE(stringIdsOff + dex.readUInt32LE(protoIdsOff + proto * 12) * 4));
+    const registers = dex.readUInt16LE(codeOff);
+    const tries = dex.readUInt16LE(codeOff + 6);
+    const insns = dex.readUInt32LE(codeOff + 12);
+    if (shorty[0] !== "Z" || registers < 1 || tries !== 0 || insns < 2) return;
+    const start = codeOff + 16;
+    dex.fill(0, start, start + insns * 2);
+    dex.writeUInt16LE(0x1012, start); // const/4 v0, #1
+    dex.writeUInt16LE(0x000f, start + 2); // return v0
+    patched++;
+  });
   if (patched) fixChecksums(dex);
   return patched;
 }

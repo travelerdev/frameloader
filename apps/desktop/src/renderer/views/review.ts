@@ -1,9 +1,9 @@
 import { formatBytes } from "../../shared/format";
-import type { RuntimeId } from "../../shared/ipc";
+import type { PayloadInfo, RuntimeId } from "../../shared/ipc";
 import { gameIdProblem } from "../../shared/gameid";
 import { h, icon, kindIcon } from "../dom";
-import type { State } from "../state";
-import { cancelReview, setReviewName, startInstall, updateReview } from "../actions";
+import type { ReviewForm, State } from "../state";
+import { cancelReview, setQuestPatch, setReviewName, startInstall, updateReview } from "../actions";
 
 export function reviewView(s: State): HTMLElement {
   const p = s.payload!;
@@ -123,6 +123,7 @@ export function reviewView(s: State): HTMLElement {
       ...blocking.map((b) => h("div", { class: "notice bad" }, b)),
       ...p.warnings.map((w) => h("div", { class: "notice" }, w)),
       runtimeControl,
+      questPatchesControl(p, r),
       advanced,
       h(
         "div",
@@ -135,6 +136,36 @@ export function reviewView(s: State): HTMLElement {
           h("button", { class: "btn primary", disabled: offline || blocking.length > 0 || !!idProblem || !r.runtime, title: offline ? "Connect to the headset first." : "", onclick: () => void startInstall() }, icon("upload"), "Install to Frame"),
         ),
       ),
+    ),
+  );
+}
+
+/** The opt-in Quest compatibility patches detected for this APK, on by default. */
+function questPatchesControl(p: PayloadInfo, r: ReviewForm): HTMLElement | null {
+  const offers = p.apk?.questPatches ?? [];
+  if (!offers.length) return null;
+  const anyOn = r.questPatches.length > 0;
+  return h(
+    "div",
+    { class: "field quest-patches" },
+    h("label", {}, "Quest compatibility patches"),
+    h("div", { class: "help" }, "This app was built for Meta Quest and won't start on the Frame as it is. Frameloader can change it so it does:"),
+    ...offers.map((o) =>
+      h(
+        "div",
+        { class: "quest-patch" },
+        h("label", { class: "check" }, h("input", { type: "checkbox", id: `qp-${o.id}`, checked: r.questPatches.includes(o.id), onchange: (e: Event) => setQuestPatch(o.id, (e.target as HTMLInputElement).checked) }), o.title),
+        h("div", { class: "help" }, o.explanation),
+      ),
+    ),
+    h(
+      "div",
+      { class: "help" },
+      !anyOn
+        ? "With no patches, the app is installed exactly as it is."
+        : p.apk?.resigned
+          ? "The patched app is re-signed with Frameloader's own key, as the merged bundle already is."
+          : "Patching means re-signing the APK with Frameloader's own key instead of the developer's. Unpatched APKs are installed exactly as they are.",
     ),
   );
 }
