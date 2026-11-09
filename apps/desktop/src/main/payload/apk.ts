@@ -5,7 +5,6 @@ import type { ApkFacts } from "../../shared/ipc";
 
 const VR_CATEGORIES = ["org.khronos.openxr.intent.category.IMMERSIVE_HMD", "com.oculus.intent.category.VR", "com.google.intent.category.CARDBOARD", "com.google.intent.category.DAYDREAM"];
 const VR_FEATURES = ["android.hardware.vr.headtracking", "android.software.vr.mode", "oculus.software.handtracking", "com.oculus.feature.PASSTHROUGH"];
-const DENSITY_ORDER = ["xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi", "ldpi"];
 
 interface ZipEntryInfo {
   name: string;
@@ -66,17 +65,23 @@ export function abisFromEntries(names: string[]): string[] {
   return [...abis].sort();
 }
 
-function pickIconEntry(iconField: unknown, names: string[]): string | undefined {
-  const declared = typeof iconField === "string" ? iconField.split(",").map((s) => s.trim()) : [];
-  const pngs = declared.filter((p) => /\.(png|webp)$/i.test(p) && names.includes(p));
-  const rank = (p: string) => {
-    const i = DENSITY_ORDER.findIndex((d) => p.includes(`-${d}`));
-    return i === -1 ? DENSITY_ORDER.length : i;
-  };
-  if (pngs.length) return pngs.sort((a, b) => rank(a) - rank(b))[0];
-  // Adaptive/vector icons only: look for any launcher PNG in res/.
-  const fallback = names.filter((n) => /^res\/(mipmap|drawable)[^/]*\/ic_launcher[^/]*\.(png|webp)$/i.test(n) && !/foreground|background|round/i.test(n));
-  return fallback.sort((a, b) => rank(a) - rank(b))[0];
+const MAX_ICON_BYTES = 2 * 1024 * 1024;
+
+/**
+ * The best bitmap for the app icon. app-info-parser gives one path per
+ * configuration (an array, or a comma-separated string in older versions).
+ * Shrunk builds rename resources (res/Ut.png), so density can't be read from
+ * the path; the largest bitmap is the highest-density one either way.
+ */
+export function pickIconEntry(iconField: unknown, entries: ZipEntryInfo[]): string | undefined {
+  const declared = (Array.isArray(iconField) ? iconField : typeof iconField === "string" ? iconField.split(",") : []).map((s) => String(s).trim());
+  const sizes = new Map(entries.map((e) => [e.name, e.size]));
+  const bitmaps = (paths: string[]) => paths.filter((p) => /\.(png|webp)$/i.test(p) && (sizes.get(p) ?? 0) > 8 && (sizes.get(p) ?? 0) <= MAX_ICON_BYTES);
+  const largest = (paths: string[]) => paths.sort((a, b) => (sizes.get(b) ?? 0) - (sizes.get(a) ?? 0))[0];
+  const own = bitmaps(declared);
+  if (own.length) return largest(own);
+  // Adaptive/vector icons only: look for a launcher bitmap in res/ by its usual names.
+  return largest(bitmaps(entries.map((e) => e.name).filter((n) => /^res\/(mipmap|drawable)[^/]*\/(ic_launcher|app_icon|icon)[^/]*\.(png|webp)$/i.test(n) && !/foreground|background|round|monochrome/i.test(n))));
 }
 
 function str(v: unknown): string {
@@ -124,21 +129,25 @@ export async function inspectApk(path: string): Promise<ApkFacts> {
     const tail = pkg.split(".").pop() ?? pkg;
     label = tail.charAt(0).toUpperCase() + tail.slice(1);
   }
-  const activities = (application.activities ?? []) as Record<string, unknown>[];
+  const activities = [...((application.activities ?? []) as Record<string, unknown>[]), ...((application.activityAliases ?? []) as Record<string, unknown>[])];
   const categories = new Set<string>();
+  let launchable = false;
   for (const a of activities) {
     for (const f of (a.intentFilters ?? []) as Record<string, unknown>[]) {
       for (const c of (f.categories ?? []) as Record<string, unknown>[]) categories.add(str(c.name));
+      if (((f.actions ?? []) as Record<string, unknown>[]).some((x) => str(x.name) === "android.intent.action.MAIN")) launchable = true;
     }
   }
+  const metaNames = ((application.metaData ?? []) as Record<string, unknown>[]).map((m) => str(m.name));
+  const questEnvironment = metaNames.includes("com.oculus.environmentVersion");
   const features = new Set(((manifest.usesFeatures ?? []) as Record<string, unknown>[]).map((f) => str(f.name)));
   const hasOpenXr = names.some((n) => /^lib\/[^/]+\/libopenxr_loader\.so$/.test(n));
   const isVr = hasOpenXr || VR_CATEGORIES.some((c) => categories.has(c)) || VR_FEATURES.some((f) => features.has(f));
   let iconDataUrl: string | undefined;
-  const iconEntry = pickIconEntry(application.icon, names);
+  const iconEntry = pickIconEntry(application.icon, entries);
   if (iconEntry) {
     try {
-      const data = await readZipEntry(path, iconEntry, 2 * 1024 * 1024);
+      const data = await readZipEntry(path, iconEntry, MAX_ICON_BYTES);
       if (data && data.length > 8) {
         const mime = /\.webp$/i.test(iconEntry) ? "image/webp" : "image/png";
         iconDataUrl = `data:${mime};base64,${data.toString("base64")}`;
@@ -160,12 +169,19 @@ export async function inspectApk(path: string): Promise<ApkFacts> {
     isVr,
     iconDataUrl,
     obbFiles: [],
+    launchable,
+    questEnvironment,
   };
 }
 
-/** Lepton is Android 11 (API 30), arm64-v8a only. */
+/** Lepton is Android 11 (API 30), arm64-v8a only, and starts an app through its MAIN activity. */
 export function apkIssues(f: ApkFacts): string[] {
   const issues: string[] = [];
+  if (f.questEnvironment && !f.launchable) {
+    issues.push("This is a Quest Home environment (scenery for the Quest's home space), not an app. There's nothing in it to start on the Frame.");
+  } else if (f.launchable === false) {
+    issues.push("This APK has no activity to start, so Lepton can't launch it. It may be a plugin, a theme, or part of another app.");
+  }
   if (f.abis.length && !f.abis.includes("arm64-v8a")) {
     issues.push(`This APK has no arm64 build (${f.abis.join(", ")} only). Lepton is 64-bit ARM only.`);
   }

@@ -95,6 +95,10 @@ export interface ApkFacts {
   isVr: boolean;
   iconDataUrl?: string;
   obbFiles: string[];
+  /** false when the manifest has no activity Android can start (MAIN action). */
+  launchable?: boolean;
+  /** A Meta Quest Home environment: scenery for the Quest's home space, not an app. */
+  questEnvironment?: boolean;
 }
 
 export interface PayloadInfo {

@@ -2,13 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { sniffBinary } from "../src/main/payload/binary";
-import { abisFromEntries, apkIssues, inspectApk } from "../src/main/payload/apk";
+import { abisFromEntries, apkIssues, inspectApk, pickIconEntry } from "../src/main/payload/apk";
 import { inspectPaths, getPayload, discardPayload } from "../src/main/payload/index";
+import { TAR_RE, unsafeTarEntry } from "../src/main/payload/tar";
+import { execFileSync } from "node:child_process";
 import { toGameId, gameIdProblem } from "../src/shared/gameid";
 import { splitArgs } from "../src/main/installer";
 import { settingsFor, runtimeFromCompatTool } from "../src/main/runtimes";
 import { lastJson } from "../src/main/devkitUtils";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, writeFileSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const FIXTURES = join(__dirname, "..", "..", "test", "fixtures");
@@ -64,6 +66,22 @@ test("flags APKs Lepton can't install", () => {
   assert.deepEqual(apkIssues({ ...base, abis: ["arm64-v8a", "armeabi-v7a"] }), []);
   assert.equal(apkIssues({ ...base, minSdk: 33 }).length, 1);
   assert.deepEqual(apkIssues({ ...base, minSdk: 30 }), []);
+  assert.match(apkIssues({ ...base, launchable: false })[0]!, /no activity to start/);
+  assert.match(apkIssues({ ...base, launchable: false, questEnvironment: true })[0]!, /Quest Home environment/);
+  assert.deepEqual(apkIssues({ ...base, launchable: true }), []);
+});
+
+test("picks the largest declared icon bitmap, including shrunk resource names", () => {
+  const e = (name: string, size: number) => ({ name, size });
+  // app-info-parser returns one path per configuration, as an array.
+  assert.equal(pickIconEntry(["res/Ut.png", "res/W5.png", "res/YA.png", "res/Qu.xml"], [e("res/Ut.png", 900), e("res/W5.png", 4000), e("res/YA.png", 2500), e("res/Qu.xml", 300)]), "res/W5.png");
+  assert.equal(pickIconEntry("res/mipmap-mdpi/a.png,res/mipmap-xxhdpi/a.png", [e("res/mipmap-mdpi/a.png", 100), e("res/mipmap-xxhdpi/a.png", 900)]), "res/mipmap-xxhdpi/a.png");
+  // Only an adaptive icon declared: fall back to Unity's app_icon.png, skipping layers.
+  assert.equal(
+    pickIconEntry(["res/mipmap-anydpi-v26/app_icon.xml"], [e("res/mipmap-anydpi-v26/app_icon.xml", 300), e("res/mipmap-hdpi-v4/app_icon.png", 2000), e("res/mipmap-xxxhdpi-v4/app_icon.png", 9000), e("res/mipmap-xxxhdpi-v4/ic_launcher_foreground.png", 20000)]),
+    "res/mipmap-xxxhdpi-v4/app_icon.png",
+  );
+  assert.equal(pickIconEntry(undefined, [e("classes.dex", 10)]), undefined);
 });
 
 test("inspects a real APK fixture", async () => {
@@ -112,6 +130,119 @@ test("finds and ranks executables in a folder", async () => {
     assert.equal(arm.kind, "linux-arm64");
     assert.deepEqual(arm.issues, []);
     discardPayload(arm.id);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const script = (interp: string) => `#!${interp}\n# ${"padding ".repeat(12)}\necho hi\n`;
+
+test("an ARM64 build starts through its own launcher script, not install helpers", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "fl-test-"));
+  try {
+    // MatineeVR's layout: the binary, launch.sh, and Python install helpers.
+    const mv = join(dir, "matineevr-steam-frame-linux-arm64-0-1-1");
+    mkdirSync(join(mv, "ffmpeg"), { recursive: true });
+    writeFileSync(join(mv, "matineevr"), elf64(0xb7, 3, true));
+    writeFileSync(join(mv, "launch.sh"), script("/bin/sh"));
+    writeFileSync(join(mv, "install.py"), script("/usr/bin/env python3"));
+    const info = await inspectPaths([mv]);
+    assert.equal(info.kind, "linux-arm64");
+    assert.equal(info.candidates?.[0]?.relPath, "launch.sh");
+    assert.equal(info.candidates?.at(-1)?.relPath, "install.py");
+    assert.ok(info.warnings.some((w) => /launch\.sh looks like the build's own launcher/.test(w)));
+    discardPayload(info.id);
+
+    // A lone shell script named after the binary counts too.
+    const g = join(dir, "game");
+    mkdirSync(g);
+    writeFileSync(join(g, "mygame"), elf64(0xb7, 3, true));
+    writeFileSync(join(g, "mygame.sh"), script("/bin/bash"));
+    const gi = await inspectPaths([g]);
+    assert.equal(gi.candidates?.[0]?.relPath, "mygame.sh");
+    discardPayload(gi.id);
+
+    // A Ren'Py-style Windows build keeps its .exe: its .sh is for x86-64 Linux.
+    const rp = join(dir, "TDITD-1.0-pc");
+    mkdirSync(join(rp, "lib", "py3-linux-x86_64"), { recursive: true });
+    writeFileSync(join(rp, "TDITD.exe"), pe(0x8664));
+    writeFileSync(join(rp, "TDITD.sh"), script("/bin/sh"));
+    writeFileSync(join(rp, "TDITD.py"), script("/usr/bin/env python3"));
+    writeFileSync(join(rp, "lib", "py3-linux-x86_64", "TDITD"), elf64(0x3e, 3, true));
+    const ri = await inspectPaths([rp]);
+    assert.equal(ri.kind, "windows");
+    assert.equal(ri.candidates?.[0]?.relPath, "TDITD.exe");
+    discardPayload(ri.id);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an APK packaged with its OBB (Unreal's Android_ASTC output) installs as the APK, not as a Windows tool", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "fl-test-"));
+  try {
+    const astc = join(dir, "Android_ASTC");
+    mkdirSync(join(astc, "win-x64"), { recursive: true });
+    mkdirSync(join(astc, "Game_Symbols_v1", "Gamearm64"), { recursive: true });
+    copyFileSync(join(FIXTURES, "termux-window.apk"), join(astc, "Game-Android-Shipping-arm64.apk"));
+    writeFileSync(join(astc, "AFS_Game-Android-Shipping-arm64.apk"), Buffer.alloc(100));
+    writeFileSync(join(astc, "main.14.com.termux.window.obb"), Buffer.alloc(4096, 1));
+    writeFileSync(join(astc, "Install_Game-Android-Shipping-arm64.bat"), "adb install ...");
+    writeFileSync(join(astc, "Game_Symbols_v1", "Gamearm64", "libUnreal.so"), elf64(0xb7, 3, false));
+    writeFileSync(join(astc, "win-x64", "UnrealAndroidFileTool.exe"), pe(0x8664));
+
+    const check = async (paths: string[]) => {
+      const info = await inspectPaths(paths);
+      assert.equal(info.kind, "apk");
+      assert.equal(info.apk?.package, "com.termux.window");
+      assert.deepEqual(info.apk?.obbFiles, ["main.14.com.termux.window.obb"]);
+      assert.deepEqual(info.issues, []);
+      assert.match(info.warnings[0]!, /Installing Game-Android-Shipping-arm64\.apk with main\.14\.com\.termux\.window\.obb\. Left out Unreal's file-transfer helper APK/);
+      const p = getPayload(info.id)!;
+      assert.match(p.apkPath!, /Game-Android-Shipping-arm64\.apk$/);
+      assert.equal(p.obbPaths.length, 1);
+      discardPayload(info.id);
+    };
+    await check([astc]);
+    execFileSync("tar", ["-c", "-z", "-f", join(dir, "Android_ASTC.tar.gz"), "-C", dir, "Android_ASTC"]);
+    await check([join(dir, "Android_ASTC.tar.gz")]);
+    assert.ok(statSync(astc).isDirectory(), "a dropped folder is never deleted on discard");
+
+    // An OBB for another package is called out.
+    const facts = await inspectPaths([join(FIXTURES, "termux-window.apk"), join(astc, "main.14.com.termux.window.obb")]);
+    assert.deepEqual(facts.warnings.filter((w) => /obb/.test(w)), []);
+    discardPayload(facts.id);
+    copyFileSync(join(astc, "main.14.com.termux.window.obb"), join(dir, "main.1.com.other.game.obb"));
+    const wrong = await inspectPaths([join(FIXTURES, "termux-window.apk"), join(dir, "main.1.com.other.game.obb")]);
+    assert.ok(wrong.warnings.some((w) => /is for com\.other\.game, not com\.termux\.window/.test(w)));
+    discardPayload(wrong.id);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("tar archives unpack like zips, and unsafe entries are refused", async () => {
+  assert.equal(unsafeTarEntry("game/bin/x"), undefined);
+  assert.equal(unsafeTarEntry("/etc/passwd"), "an absolute path");
+  assert.equal(unsafeTarEntry("a/../../x"), "a path with ..");
+  assert.ok(TAR_RE.test("devilutionx-linux-aarch64.tar.xz") && TAR_RE.test("g.tgz") && TAR_RE.test("g.tar") && !TAR_RE.test("g.xz"));
+  const dir = mkdtempSync(join(tmpdir(), "fl-test-"));
+  try {
+    const src = join(dir, "src");
+    mkdirSync(src);
+    writeFileSync(join(src, "devilutionx"), elf64(0xb7, 3, true));
+    writeFileSync(join(src, "README.txt"), "data");
+    for (const [name, flag] of [["devilutionx-linux-aarch64.tar.xz", "-J"], ["game.tar.gz", "-z"], ["game.tar", ""]] as const) {
+      const out = join(dir, name);
+      execFileSync("tar", ["-c", ...(flag ? [flag] : []), "-f", out, "-C", src, "devilutionx", "README.txt"]);
+      const info = await inspectPaths([out]);
+      assert.equal(info.kind, "linux-arm64", name);
+      assert.equal(info.candidates?.[0]?.relPath, "devilutionx", name);
+      assert.ok(!/tar|xz|gz/.test(info.name), `name "${info.name}" keeps the archive extension`);
+      discardPayload(info.id);
+    }
+    writeFileSync(join(dir, "broken.tar.xz"), "not an archive");
+    await assert.rejects(inspectPaths([join(dir, "broken.tar.xz")]), /Couldn't unpack that archive/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

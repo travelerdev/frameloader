@@ -110,7 +110,7 @@ function dropzone(s: State): HTMLElement {
       "div",
       { class: "dropzone" + (s.dragOver ? " over" : ""), id: "dropzone" },
       s.inspecting ? h("span", { class: "spinner", style: "width:28px;height:28px" }) : icon("upload"),
-      h("div", { class: "big" }, s.dragOver ? "Release to inspect" : s.inspecting ? "Reading the app…" : "Drop an APK, Windows app, zip, or folder"),
+      h("div", { class: "big" }, s.dragOver ? "Release to inspect" : s.inspecting ? "Reading the app…" : "Drop an APK or APKM, Windows app, zip or tar, or folder"),
       h("div", { class: "muted" }, "It gets copied to the headset and added to your Steam library."),
       h("button", { class: "btn", disabled: s.inspecting, onclick: () => void pickFiles() }, "Choose file…"),
     ),

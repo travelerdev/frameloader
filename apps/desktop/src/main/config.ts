@@ -207,6 +207,11 @@ class Config {
   keyPath(): string {
     return join(dir(), "devkit_rsa");
   }
+
+  /** Key used to re-sign APKs merged from split bundles (its certificate sits beside it). */
+  apkSigningKeyPath(): string {
+    return join(dir(), "apk-signing.pem");
+  }
 }
 
 export const config = new Config();
