@@ -123,7 +123,7 @@ function reviewFor(p: PayloadInfo, runtimes: { id: RuntimeId; available: boolean
     launchArgs: "",
     env: [],
     flatscreen: p.apk ? !p.apk.isVr : false,
-    launchAfter: true,
+    launchAfter: false,
     advancedOpen: false,
     questPatches: p.apk?.questPatches?.map((o) => o.id) ?? [],
   };
