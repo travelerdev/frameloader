@@ -70,7 +70,9 @@ const base = {
     "artifactName": "Frameloader-linux-${arch}.${ext}",
     "executableName": "frameloader"
   },
-  "electronVersion": "44.5.1"
+  // Package with the Electron that's installed, so bumping it in package.json is enough.
+  // (electron-builder can't find it on its own in the hoisted pnpm workspace.)
+  "electronVersion": require("electron/package.json").version
 };
 
 module.exports = {
