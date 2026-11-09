@@ -1,5 +1,5 @@
 // Everything the views can do, as plain functions over the bridge + store.
-import type { InstallProgress, InstallRequest, InstallStep, PayloadInfo, QuestPatchId, RuntimeId } from "../shared/ipc";
+import type { InstallProgress, InstallRequest, InstallStep, PayloadInfo, RuntimeId } from "../shared/ipc";
 import { toGameId } from "../shared/gameid";
 import { api } from "./api";
 import { setBusy, store, toast, type ReviewForm } from "./state";
@@ -165,14 +165,6 @@ export function updateReview(patch: Partial<ReviewForm>): void {
 }
 
 /** Turn one Quest compatibility patch on or off, from the current state (not a render-time copy). */
-export function setQuestPatch(id: QuestPatchId, on: boolean): void {
-  store.set((s) => {
-    if (!s.review) return {};
-    const rest = s.review.questPatches.filter((x) => x !== id);
-    return { review: { ...s.review, questPatches: on ? [...rest, id] : rest } };
-  });
-}
-
 export function setReviewName(name: string): void {
   store.set((s) => {
     if (!s.review) return {};

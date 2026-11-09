@@ -221,5 +221,4 @@ details.advanced .stack { margin-top: 12px; padding-top: 12px; border-top: 1px s
 .main { position: relative; }
 .btn.corner { position: absolute; top: 12px; right: 16px; }
 
-.quest-patches .quest-patch { display: flex; flex-direction: column; gap: 2px; padding: 8px 0 4px; }
-.quest-patches .quest-patch .help { padding-left: 24px; }
+.quest-patches .help { padding-left: 24px; margin-top: 4px; }
