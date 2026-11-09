@@ -23,8 +23,9 @@ export interface MethodRef {
 
 /**
  * Lepton ships no clipboard service, so getSystemService(CLIPBOARD_SERVICE)
- * returns null and SDL2/SDL3's SDLActivity dies in onCreate registering a
- * listener on it. Dropping the registration lets those apps start.
+ * returns null and any app that registers a clip-changed listener on it
+ * crashes (SDL2/SDL3's SDLActivity does so in onCreate). Dropping the calls
+ * costs nothing, since there is no clipboard to listen to.
  */
 export const LEPTON_CLIPBOARD_CALLS: MethodRef[] = [
   { class: "Landroid/content/ClipboardManager;", name: "addPrimaryClipChangedListener" },

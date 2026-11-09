@@ -119,7 +119,7 @@ export async function mergeBundle(path: string, signingKeyPath: string): Promise
     const list = (xs: string[]) => (xs.length > 6 ? `${xs.slice(0, 5).join(", ")} and ${xs.length - 5} more` : xs.join(", "));
     const parts = [use.some((s) => describeSplit(s.split!).kind === "abi") ? "arm64 libraries" : "", configs.length ? `${configs.length} resource split${configs.length === 1 ? "" : "s"} (${list(configs)})` : "", features.length ? `${features.length} feature module${features.length === 1 ? "" : "s"}` : ""].filter(Boolean);
     notes.push(`Merged the bundle into one APK${parts.length ? `: base + ${parts.join(" + ")}` : ""}, then re-signed it with Frameloader's own key.`);
-    if (r.patchedCalls) notes.push(`Patched for Lepton: removed ${r.patchedCalls} clipboard listener call${r.patchedCalls === 1 ? "" : "s"}. Lepton has no clipboard service, which crashes SDL-based apps at startup.`);
+    if (r.patchedCalls) notes.push(`Skipped ${r.patchedCalls} clipboard listener call${r.patchedCalls === 1 ? "" : "s"}: Lepton has no clipboard service, so registering one can crash the app. Copy and paste won't work in it.`);
     const warnings: string[] = [];
     if (skipped.length) warnings.push(`Left out the ${skipped.join(", ")} builds; the Frame only runs arm64.`);
     if (features.length) warnings.push(`Feature modules (${features.join(", ")}) were merged as code and resources only; anything their manifests declare isn't registered.`);

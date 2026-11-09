@@ -9,6 +9,7 @@ import { config } from "../config";
 import { apkIssues, inspectApk } from "./apk";
 import { readHead, sniffBinary } from "./binary";
 import { BUNDLE_EXTS, mergeBundle, zipLooksLikeBundle } from "./bundle";
+import { extractTar, TAR_RE } from "./tar";
 
 export interface Payload {
   info: PayloadInfo;
@@ -59,10 +60,11 @@ export async function inspectPaths(paths: string[]): Promise<PayloadInfo> {
   const target = others[0]!;
   const st = statSync(target);
   if (st.isDirectory()) return inspectDirPayload(target, undefined);
+  if (TAR_RE.test(basename(target))) return inspectTarPayload(target);
   const ext = extname(target).toLowerCase();
   if (ext === ".zip") return (await zipLooksLikeBundle(target)) ? inspectBundlePayload(target, obbs) : inspectZipPayload(target);
   if (ext === ".exe" || !ext || ext === ".sh" || ext === ".x86_64" || ext === ".bin" || ext === ".elf") return inspectSingleExecutable(target);
-  throw new Error(`Frameloader doesn't know what to do with a ${ext || "file without an extension"} file. Drop an APK, a split bundle (.apkm/.xapk), .exe, zip, or folder.`);
+  throw new Error(`Frameloader doesn't know what to do with a ${ext || "file without an extension"} file. Drop an APK, a split bundle (.apkm/.xapk), .exe, a zip or tar archive, or a folder.`);
 }
 
 interface ApkExtras {
@@ -155,13 +157,39 @@ function scanExecutables(root: string): ExecutableCandidate[] {
     else if (c.format === "elf" && c.arch === "x86-64") s += 10;
     else if (c.format === "pe") s += 15;
     else if (c.format === "script") s += 5;
+    if (c.format === "script" && NOT_A_LAUNCHER.test(c.relPath)) s -= 60;
     const stem = basename(c.relPath, extname(c.relPath)).toLowerCase();
     if (rootName && stem.includes(rootName)) s += 15;
     s -= c.relPath.split("/").length * 3;
     s += Math.min(10, Math.log10(Math.max(1, c.size)));
     c.score = Math.round(s);
   }
-  return out.sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath));
+  out.sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath));
+  // An ARM64 build that ships its own launcher script (to set LD_LIBRARY_PATH,
+  // pick a bundled driver, register with SteamVR, …) should start through it.
+  const binary = out.find((c) => c.format !== "script");
+  if (binary?.format === "elf" && binary.arch === "arm64") {
+    const launcher = findLauncherScript(out, binary, rootName);
+    if (launcher) {
+      launcher.score = binary.score + 1;
+      out.sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath));
+    }
+  }
+  return out;
+}
+
+// Install/deploy helpers and interpreter scripts that aren't the program.
+const NOT_A_LAUNCHER = /(\.(py|pl|rb)$)|((^|\/)(install|deploy|uninstall|setup|build|update|artwork)[^/]*$)/i;
+
+/** A top-level shell script that starts `binary`: launch.sh/run.sh/start.sh, <binary>.sh, <folder>.sh, or the only one there. */
+export function findLauncherScript(candidates: ExecutableCandidate[], binary: ExecutableCandidate, rootName: string): ExecutableCandidate | undefined {
+  const scripts = candidates.filter((c) => c.format === "script" && !c.relPath.includes("/") && !NOT_A_LAUNCHER.test(c.relPath));
+  const stem = (p: string) => basename(p, extname(p)).toLowerCase();
+  return (
+    scripts.find((c) => /^(launch|run|start|play)([-_.][\w.-]*)?\.sh$/i.test(c.relPath)) ??
+    scripts.find((c) => c.relPath.toLowerCase().endsWith(".sh") && (stem(c.relPath) === stem(binary.relPath) || (!!rootName && stem(c.relPath) === rootName))) ??
+    (scripts.filter((c) => c.relPath.toLowerCase().endsWith(".sh")).length === 1 ? scripts.find((c) => c.relPath.toLowerCase().endsWith(".sh")) : undefined)
+  );
 }
 
 export function kindForCandidate(c: ExecutableCandidate | undefined, all: ExecutableCandidate[]): PayloadKind {
@@ -213,6 +241,7 @@ async function inspectDirPayload(root: string, preferred: string | undefined, te
   else if (kind === "linux-x64") info.issues.push("This is a 64-bit x86 Linux build. The Frame can't run those as sideloaded titles; it needs an ARM64 Linux build or a Windows build.");
   else if (kind === "unknown") info.issues.push(`The executable (${top.relPath}) isn't a build the Frame can run (${top.arch}, ${top.format}).`);
   if (top && candidates.length > 1) info.warnings.push(`Found ${candidates.length} executables; starting with ${top.relPath}.`);
+  if (top?.format === "script" && kind === "linux-arm64" && !preferred) info.warnings.push(`${top.relPath} looks like the build's own launcher, so it's used instead of starting the program directly.`);
   if (kind === "linux-arm64") info.warnings.push("Linux ARM64 builds start natively, without the Steam Linux Runtime container.");
   payloads.set(info.id, { info, rootDir: root, obbPaths: [], tempDir });
   return info;
@@ -257,18 +286,26 @@ function siblingsNeeded(file: string): string | null {
 }
 
 async function inspectZipPayload(zipPath: string): Promise<PayloadInfo> {
+  return inspectArchivePayload(zipPath, basename(zipPath, ".zip"), extractZip);
+}
+
+async function inspectTarPayload(tarPath: string): Promise<PayloadInfo> {
+  return inspectArchivePayload(tarPath, basename(tarPath).replace(TAR_RE, ""), (src, dest) => extractTar(src, dest, { maxEntries: MAX_ENTRIES, maxBytes: MAX_UNPACKED }));
+}
+
+async function inspectArchivePayload(archive: string, displayName: string, extract: (src: string, dest: string) => Promise<void>): Promise<PayloadInfo> {
   const temp = mkdtempSync(join(tmpdir(), "frameloader-"));
   try {
-    await extractZip(zipPath, temp);
+    await extract(archive, temp);
+    // An archive with a single top-level folder is that folder.
+    let root = temp;
+    const top = readdirSync(temp, { withFileTypes: true }).filter((e) => !e.name.startsWith("__MACOSX") && e.name !== ".DS_Store");
+    if (top.length === 1 && top[0]!.isDirectory()) root = join(temp, top[0]!.name);
+    return await inspectDirPayload(root, undefined, temp, displayName);
   } catch (e) {
     rmSync(temp, { recursive: true, force: true });
     throw e;
   }
-  // A zip with a single top-level folder is that folder.
-  let root = temp;
-  const top = readdirSync(temp, { withFileTypes: true }).filter((e) => !e.name.startsWith("__MACOSX") && e.name !== ".DS_Store");
-  if (top.length === 1 && top[0]!.isDirectory()) root = join(temp, top[0]!.name);
-  return inspectDirPayload(root, undefined, temp, basename(zipPath, ".zip"));
 }
 
 const MAX_ENTRIES = 200_000;

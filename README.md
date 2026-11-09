@@ -21,9 +21,9 @@ Frameloader uses the **SteamOS devkit protocol** to install your APK or other ap
 
 | You drop | Runtime (Steam compat tool) | Status |
 |---|---|---|
-| `.apk` (arm64-v8a, API ≤ 30) | Lepton | Primary path. Each app runs in its own persistent Lepton container, so save data survives. |
-| Windows `.exe` or a zip/folder with one | Proton Experimental or Proton (stable) | Works through FEX. Needs a Proton already installed on the headset. |
-| Linux ARM64 build | Steam Linux Runtime 4 (ARM64) | Starts natively; self-contained builds only. |
+| `.apk` (arm64-v8a, API ≤ 30) | Lepton | Primary path. Each app runs in its own persistent Lepton container, so save data survives. APKs with nothing to start (Quest Home environments, plugins) are refused. |
+| Windows `.exe` or a zip/tar/folder with one | Proton Experimental or Proton (stable) | Works through FEX. Needs a Proton already installed on the headset. |
+| Linux ARM64 build, in a zip, tar (`.tar`, `.tar.gz`, `.tar.xz`, …) or folder | Steam Linux Runtime 4 (ARM64) | Starts natively; self-contained builds only. If the build ships its own launcher (`launch.sh`, `run.sh`, `<name>.sh`), that's the default start command. |
 | Linux x86-64 build | – | Refused: the Frame won't install the x86-64 runtime for sideloaded titles. |
 | `.apkm` / `.xapk` / `.apks` (split APK bundles) | Lepton | Merged on your computer into one APK first (see below). |
 
@@ -33,7 +33,7 @@ For Android apps, Frameloader reads the manifest to pick a name and icon, refuse
 
 Lepton installs a title with a plain `adb install <one apk>` every time it launches (its "baked" container data is wiped on exit), so there is nowhere for the splits of an app bundle to live. Frameloader therefore does what APKEditor/antisplit tools do, in-process and without Java: it unpacks the bundle, keeps the base plus the `arm64-v8a`, density and language splits (other ABIs are dropped), merges their files and `resources.arsc` tables into one APK, clears the "needs splits" markers in the manifest, and re-signs the result with APK Signature Scheme v2 using a key it generates once in its user-data folder. The app keeps its original package name and version, but its signature changes, so anything that checks its signing certificate (Play licensing, some SafetyNet-style checks) will notice.
 
-While it has the APK open, Frameloader also applies one Lepton compatibility patch: Lepton ships no clipboard service, so `getSystemService(CLIPBOARD_SERVICE)` returns null and every SDL2/SDL3 app dies in `SDLActivity.onCreate` registering a clip-changed listener. The merge blanks those `ClipboardManager.addPrimaryClipChangedListener` / `removePrimaryClipChangedListener` calls in the bytecode (void calls become nops, so the dex still verifies). The review screen says when this happened. Plain `.apk` drops are uploaded untouched.
+While it has the APK open, Frameloader also applies one Lepton compatibility patch: Lepton ships no clipboard service, so `getSystemService(CLIPBOARD_SERVICE)` returns null and any app that registers a clip-changed listener on it crashes (every SDL2/SDL3 app does so in `SDLActivity.onCreate`). The merge skips those `ClipboardManager.addPrimaryClipChangedListener` / `removePrimaryClipChangedListener` calls in the bytecode (void calls become nops, so the dex still verifies); with no clipboard there's nothing to listen to anyway. The review screen says when this happened. Plain `.apk` drops are uploaded untouched.
 
 ## Using it
 
