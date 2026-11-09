@@ -1,9 +1,9 @@
-// Thin wrapper over ssh2: one connection, exec with captured output, SFTP uploads.
+// Thin wrapper over ssh2: one connection, exec with captured output, SFTP and tar-stream uploads.
 import { Client, type ConnectConfig, type SFTPWrapper } from "ssh2";
 import { createHash } from "node:crypto";
-import { readdirSync, statSync } from "node:fs";
-import { join, posix } from "node:path";
+import { posix } from "node:path";
 import { activity } from "./activity";
+import { collectTarEntries, tarChunks, type TarEntry } from "./tarStream";
 
 export interface ExecResult {
   code: number;
@@ -189,40 +189,102 @@ export class SshSession {
     });
   }
 
-  /** Upload a directory tree. Remote directories are created with one mkdir -p. */
+  /**
+   * Upload a directory tree. When the headset has tar, the tree goes as one
+   * tar stream into `tar -x` over this (already encrypted, host-verified) SSH
+   * connection, so thousands of small files cost one round-trip instead of one
+   * each. Without tar it falls back to per-file SFTP.
+   */
   async putDir(localDir: string, remoteDir: string, opts: { onProgress?: (sent: number, total: number) => void } = {}): Promise<void> {
-    const files: { local: string; rel: string; size: number; exec: boolean }[] = [];
-    const dirs = new Set<string>([remoteDir]);
-    const walk = (dir: string, rel: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const full = join(dir, entry.name);
-        const r = rel ? posix.join(rel, entry.name) : entry.name;
-        if (entry.isSymbolicLink()) continue;
-        if (entry.isDirectory()) {
-          dirs.add(posix.join(remoteDir, r));
-          walk(full, r);
-        } else if (entry.isFile()) {
-          const st = statSync(full);
-          files.push({ local: full, rel: r, size: st.size, exec: (st.mode & 0o111) !== 0 });
-        }
-      }
-    };
-    walk(localDir, "");
-    await this.exec("mkdir -p " + [...dirs].map(shq).join(" "), { quiet: true });
-    const total = files.reduce((a, f) => a + f.size, 0);
+    const entries = collectTarEntries(localDir);
+    const total = entries.reduce((a, e) => a + e.size, 0);
+    if (await this.hasRemoteTar()) await this.putDirTar(entries, remoteDir, total, opts.onProgress);
+    else await this.putDirSftp(entries, remoteDir, total, opts.onProgress);
+  }
+
+  private remoteTar?: boolean;
+
+  private async hasRemoteTar(): Promise<boolean> {
+    if (this.remoteTar === undefined) this.remoteTar = (await this.exec("command -v tar >/dev/null 2>&1", { quiet: true })).code === 0;
+    return this.remoteTar;
+  }
+
+  private putDirTar(entries: TarEntry[], remoteDir: string, total: number, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    // Every file gets 0755, as the SFTP path does: builds unpacked from zips
+    // often lose their exec bits. --no-same-owner keeps files owned by the user.
+    const cmd = `mkdir -p ${shq(remoteDir)} && exec tar --no-same-owner -x -f - -C ${shq(remoteDir)}`;
+    activity.push("cmd", `${cmd}  (${entries.length} entries streamed)`);
+    return new Promise((resolve, reject) => {
+      this.client.exec(cmd, (err, ch) => {
+        if (err) return reject(new SshError(err.message));
+        let stderr = "";
+        let closed = false;
+        ch.on("data", () => {});
+        ch.on("error", () => {});
+        ch.stderr.on("data", (c: Buffer) => {
+          stderr = (stderr + c.toString("utf8")).slice(-4000);
+        });
+        const exit = new Promise<number | null>((res) =>
+          ch.on("close", (code: number | null) => {
+            closed = true;
+            res(code);
+          }),
+        );
+        const waitDrain = () =>
+          new Promise<void>((res) => {
+            const done = () => {
+              ch.off("drain", done);
+              ch.off("close", done);
+              res();
+            };
+            ch.on("drain", done).on("close", done);
+          });
+        let sent = 0;
+        const pump = async () => {
+          for await (const chunk of tarChunks(entries, { fileMode: 0o755, dirMode: 0o755, onFileBytes: (n) => onProgress?.((sent += n), total) })) {
+            if (closed) return false;
+            if (!ch.write(chunk)) await waitDrain();
+          }
+          ch.end();
+          return true;
+        };
+        pump().then(
+          async (complete) => {
+            const code = await exit;
+            if (code === 0 && complete) {
+              onProgress?.(total, total);
+              return resolve();
+            }
+            const why = stderr.trim().split("\n").slice(-3).join(" ") || `tar exited ${code ?? "on a signal"}`;
+            activity.push("err", why);
+            reject(new SshError(`upload failed: ${why}`));
+          },
+          (e: Error) => {
+            ch.close();
+            reject(new SshError(`upload failed: ${e.message}`));
+          },
+        );
+      });
+    });
+  }
+
+  private async putDirSftp(entries: TarEntry[], remoteDir: string, total: number, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    const dirs = [remoteDir, ...entries.filter((e) => e.type === "dir").map((e) => posix.join(remoteDir, e.rel))];
+    await this.exec("mkdir -p " + dirs.map(shq).join(" "), { quiet: true });
     let doneBytes = 0;
-    for (const f of files) {
+    for (const f of entries) {
+      if (f.type !== "file") continue;
       let last = 0;
-      await this.putFile(f.local, posix.join(remoteDir, f.rel), {
+      await this.putFile(f.local!, posix.join(remoteDir, f.rel), {
         mode: 0o755,
         onProgress: (sent) => {
           doneBytes += sent - last;
           last = sent;
-          opts.onProgress?.(doneBytes, total);
+          onProgress?.(doneBytes, total);
         },
       });
       doneBytes += f.size - last;
-      opts.onProgress?.(doneBytes, total);
+      onProgress?.(doneBytes, total);
     }
   }
 }
