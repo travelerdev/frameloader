@@ -10,7 +10,7 @@ import { toGameId, gameIdProblem } from "../src/shared/gameid";
 import { splitArgs } from "../src/main/installer";
 import { settingsFor, runtimeFromCompatTool } from "../src/main/runtimes";
 import { lastJson } from "../src/main/devkitUtils";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, writeFileSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const FIXTURES = join(__dirname, "..", "..", "test", "fixtures");
@@ -173,6 +173,49 @@ test("an ARM64 build starts through its own launcher script, not install helpers
     assert.equal(ri.kind, "windows");
     assert.equal(ri.candidates?.[0]?.relPath, "TDITD.exe");
     discardPayload(ri.id);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an APK packaged with its OBB (Unreal's Android_ASTC output) installs as the APK, not as a Windows tool", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "fl-test-"));
+  try {
+    const astc = join(dir, "Android_ASTC");
+    mkdirSync(join(astc, "win-x64"), { recursive: true });
+    mkdirSync(join(astc, "Game_Symbols_v1", "Gamearm64"), { recursive: true });
+    copyFileSync(join(FIXTURES, "termux-window.apk"), join(astc, "Game-Android-Shipping-arm64.apk"));
+    writeFileSync(join(astc, "AFS_Game-Android-Shipping-arm64.apk"), Buffer.alloc(100));
+    writeFileSync(join(astc, "main.14.com.termux.window.obb"), Buffer.alloc(4096, 1));
+    writeFileSync(join(astc, "Install_Game-Android-Shipping-arm64.bat"), "adb install ...");
+    writeFileSync(join(astc, "Game_Symbols_v1", "Gamearm64", "libUnreal.so"), elf64(0xb7, 3, false));
+    writeFileSync(join(astc, "win-x64", "UnrealAndroidFileTool.exe"), pe(0x8664));
+
+    const check = async (paths: string[]) => {
+      const info = await inspectPaths(paths);
+      assert.equal(info.kind, "apk");
+      assert.equal(info.apk?.package, "com.termux.window");
+      assert.deepEqual(info.apk?.obbFiles, ["main.14.com.termux.window.obb"]);
+      assert.deepEqual(info.issues, []);
+      assert.match(info.warnings[0]!, /Installing Game-Android-Shipping-arm64\.apk with main\.14\.com\.termux\.window\.obb\. Left out Unreal's file-transfer helper APK/);
+      const p = getPayload(info.id)!;
+      assert.match(p.apkPath!, /Game-Android-Shipping-arm64\.apk$/);
+      assert.equal(p.obbPaths.length, 1);
+      discardPayload(info.id);
+    };
+    await check([astc]);
+    execFileSync("tar", ["-c", "-z", "-f", join(dir, "Android_ASTC.tar.gz"), "-C", dir, "Android_ASTC"]);
+    await check([join(dir, "Android_ASTC.tar.gz")]);
+    assert.ok(statSync(astc).isDirectory(), "a dropped folder is never deleted on discard");
+
+    // An OBB for another package is called out.
+    const facts = await inspectPaths([join(FIXTURES, "termux-window.apk"), join(astc, "main.14.com.termux.window.obb")]);
+    assert.deepEqual(facts.warnings.filter((w) => /obb/.test(w)), []);
+    discardPayload(facts.id);
+    copyFileSync(join(astc, "main.14.com.termux.window.obb"), join(dir, "main.1.com.other.game.obb"));
+    const wrong = await inspectPaths([join(FIXTURES, "termux-window.apk"), join(dir, "main.1.com.other.game.obb")]);
+    assert.ok(wrong.warnings.some((w) => /is for com\.other\.game, not com\.termux\.window/.test(w)));
+    discardPayload(wrong.id);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

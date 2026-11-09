@@ -10,6 +10,7 @@ import { apkIssues, inspectApk } from "./apk";
 import { readHead, sniffBinary } from "./binary";
 import { BUNDLE_EXTS, mergeBundle, zipLooksLikeBundle } from "./bundle";
 import { extractTar, TAR_RE } from "./tar";
+import { findApkSet, obbWarnings } from "./apkset";
 
 export interface Payload {
   info: PayloadInfo;
@@ -59,7 +60,11 @@ export async function inspectPaths(paths: string[]): Promise<PayloadInfo> {
   if (others.length !== 1) throw new Error("Drop a single app: an APK, a split bundle, an .exe, a zip, or a folder.");
   const target = others[0]!;
   const st = statSync(target);
-  if (st.isDirectory()) return inspectDirPayload(target, undefined);
+  if (st.isDirectory()) {
+    const set = await findApkSet(target);
+    if (set) return inspectApkPayload(set.apk, [...set.obbs, ...obbs], { sourcePaths: [target], notes: set.notes });
+    return inspectDirPayload(target, undefined);
+  }
   if (TAR_RE.test(basename(target))) return inspectTarPayload(target);
   const ext = extname(target).toLowerCase();
   if (ext === ".zip") return (await zipLooksLikeBundle(target)) ? inspectBundlePayload(target, obbs) : inspectZipPayload(target);
@@ -86,7 +91,7 @@ async function inspectApkPayload(apkPath: string, obbPaths: string[], extras: Ap
     sizeBytes: size,
     apk: facts,
     issues: apkIssues(facts),
-    warnings: [...(extras.notes ?? []), ...(extras.warnings ?? [])],
+    warnings: [...(extras.notes ?? []), ...(extras.warnings ?? []), ...obbWarnings(facts.obbFiles, facts.package)],
   };
   if (!facts.abis.length) info.warnings.push("No native code; should run on any device.");
   payloads.set(info.id, { info, apkPath, obbPaths, tempDir: extras.tempDir });
@@ -301,6 +306,8 @@ async function inspectArchivePayload(archive: string, displayName: string, extra
     let root = temp;
     const top = readdirSync(temp, { withFileTypes: true }).filter((e) => !e.name.startsWith("__MACOSX") && e.name !== ".DS_Store");
     if (top.length === 1 && top[0]!.isDirectory()) root = join(temp, top[0]!.name);
+    const set = await findApkSet(root);
+    if (set) return await inspectApkPayload(set.apk, set.obbs, { sourcePaths: [archive], tempDir: temp, notes: set.notes });
     return await inspectDirPayload(root, undefined, temp, displayName);
   } catch (e) {
     rmSync(temp, { recursive: true, force: true });
