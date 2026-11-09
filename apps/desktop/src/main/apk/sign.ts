@@ -4,7 +4,7 @@
 //
 // Reference: https://source.android.com/docs/security/features/apksigning/v2
 import { createHash, createSign, generateKeyPairSync, randomBytes, type KeyObject, createPrivateKey, createPublicKey } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, ftruncateSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 
 export interface SigningKey {
@@ -140,6 +140,23 @@ export function contentDigest(entries: Buffer, centralDir: Buffer, eocd: Buffer)
   return createHash("sha256").update(Buffer.from([0x5a])).update(u32(chunkDigests.length)).update(Buffer.concat(chunkDigests)).digest();
 }
 
+function signingBlock(digest: Buffer, key: SigningKey): Buffer {
+  const digests = prefixed(prefixed(Buffer.concat([u32(SIG_RSA_PKCS1_SHA256), prefixed(digest)])));
+  const certs = prefixed(prefixed(key.cert));
+  const attrs = prefixed(Buffer.alloc(0));
+  const signedData = Buffer.concat([digests, certs, attrs]);
+  const signer = createSign("RSA-SHA256");
+  signer.update(signedData);
+  const sig = signer.sign(key.privateKey);
+  const signatures = prefixed(prefixed(Buffer.concat([u32(SIG_RSA_PKCS1_SHA256), prefixed(sig)])));
+  const pub = prefixed(createPublicKey(key.privateKey).export({ type: "spki", format: "der" }) as Buffer);
+  const signer1 = prefixed(Buffer.concat([prefixed(signedData), signatures, pub]));
+  const value = prefixed(signer1);
+  const pair = Buffer.concat([u64(4 + value.length), u32(V2_BLOCK_ID), value]);
+  const blockSize = pair.length + 8 + 16;
+  return Buffer.concat([u64(blockSize), pair, u64(blockSize), Buffer.from("APK Sig Block 42", "latin1")]);
+}
+
 /** Returns the zip with an APK Signing Block (v2) inserted before the central directory. */
 export function signApkV2(zip: Buffer, key: SigningKey): Buffer {
   const eocdOff = findEocd(zip);
@@ -148,28 +165,55 @@ export function signApkV2(zip: Buffer, key: SigningKey): Buffer {
   if (cdOff + cdSize !== eocdOff) throw new Error("zip already has data between the central directory and its end record");
   const entries = zip.subarray(0, cdOff);
   const centralDir = zip.subarray(cdOff, eocdOff);
-
-  const build = (digest: Buffer): Buffer => {
-    const digests = prefixed(prefixed(Buffer.concat([u32(SIG_RSA_PKCS1_SHA256), prefixed(digest)])));
-    const certs = prefixed(prefixed(key.cert));
-    const attrs = prefixed(Buffer.alloc(0));
-    const signedData = Buffer.concat([digests, certs, attrs]);
-    const signer = createSign("RSA-SHA256");
-    signer.update(signedData);
-    const sig = signer.sign(key.privateKey);
-    const signatures = prefixed(prefixed(Buffer.concat([u32(SIG_RSA_PKCS1_SHA256), prefixed(sig)])));
-    const pub = prefixed(createPublicKey(key.privateKey).export({ type: "spki", format: "der" }) as Buffer);
-    const signer1 = prefixed(Buffer.concat([prefixed(signedData), signatures, pub]));
-    const value = prefixed(signer1);
-    const pair = Buffer.concat([u64(4 + value.length), u32(V2_BLOCK_ID), value]);
-    const blockSize = pair.length + 8 + 16;
-    return Buffer.concat([u64(blockSize), pair, u64(blockSize), Buffer.from("APK Sig Block 42", "latin1")]);
-  };
   // The digest covers the EOCD with its central-directory offset pointing at
   // the signing block, i.e. the unsigned file's EOCD as it is; the written
   // EOCD then points past the block.
-  const block = build(contentDigest(entries, centralDir, zip.subarray(eocdOff)));
+  const block = signingBlock(contentDigest(entries, centralDir, zip.subarray(eocdOff)), key);
   const eocd = Buffer.from(zip.subarray(eocdOff));
   eocd.writeUInt32LE(cdOff + block.length, 16);
   return Buffer.concat([entries, block, centralDir, eocd]);
+}
+
+/**
+ * Sign an unsigned zip file in place, reading it in 1 MiB chunks: the same
+ * result as signApkV2, without holding the whole APK in memory.
+ */
+export function signApkV2File(path: string, key: SigningKey): void {
+  const fd = openSync(path, "r+");
+  try {
+    const size = fstatSync(fd).size;
+    const tailLen = Math.min(size, 22 + 0xffff);
+    const tail = Buffer.alloc(tailLen);
+    readSync(fd, tail, 0, tailLen, size - tailLen);
+    const eocdOff = size - tailLen + findEocd(tail);
+    const eocdBuf = tail.subarray(eocdOff - (size - tailLen));
+    const cdOff = eocdBuf.readUInt32LE(16);
+    const cdSize = eocdBuf.readUInt32LE(12);
+    if (cdOff + cdSize !== eocdOff) throw new Error("zip already has data between the central directory and its end record");
+    const read = (off: number, len: number) => {
+      const b = Buffer.alloc(len);
+      let got = 0;
+      while (got < len) {
+        const n = readSync(fd, b, got, len - got, off + got);
+        if (n <= 0) throw new Error("unexpected end of file while signing");
+        got += n;
+      }
+      return b;
+    };
+    const centralDir = read(cdOff, cdSize);
+    const eocd = Buffer.from(eocdBuf);
+    const chunkDigests: Buffer[] = [];
+    const digestChunk = (part: Buffer) => chunkDigests.push(createHash("sha256").update(Buffer.from([0xa5])).update(u32(part.length)).update(part).digest());
+    for (let off = 0; off < cdOff; off += CHUNK) digestChunk(read(off, Math.min(CHUNK, cdOff - off)));
+    for (const section of [centralDir, eocd]) for (let off = 0; off < section.length; off += CHUNK) digestChunk(section.subarray(off, Math.min(off + CHUNK, section.length)));
+    const digest = createHash("sha256").update(Buffer.from([0x5a])).update(u32(chunkDigests.length)).update(Buffer.concat(chunkDigests)).digest();
+    const block = signingBlock(digest, key);
+    eocd.writeUInt32LE(cdOff + block.length, 16);
+    const out = Buffer.concat([block, centralDir, eocd]);
+    let off = 0;
+    while (off < out.length) off += writeSync(fd, out, off, out.length - off, cdOff + off);
+    ftruncateSync(fd, cdOff + out.length);
+  } finally {
+    closeSync(fd);
+  }
 }

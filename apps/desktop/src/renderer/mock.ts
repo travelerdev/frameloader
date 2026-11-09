@@ -85,7 +85,7 @@ export function installMock(): void {
     },
     payload: {
       inspect: async (paths) => fakePayload(paths[0] ?? "Playground.apk"),
-      pick: async () => fakePayload("Playground.apk"),
+      pick: async () => fakePayload(q.get("pick") ?? "Playground.apk"),
       discard: async () => undefined,
       runtimes: async (id) =>
         id.startsWith("win")
@@ -171,6 +171,24 @@ export function installMock(): void {
       return { id: "win1", kind: "windows", sourcePaths: [path], name: path.replace(/\.(exe|zip)$/i, ""), sizeBytes: 3.6e6, candidates: [{ relPath: "putty.exe", format: "pe", arch: "x86-64", size: 3.6e6, score: 120 }, { relPath: "tools/pageant.exe", format: "pe", arch: "x86-64", size: 1.2e6, score: 70 }], issues: [], warnings: ["Found 2 executables; starting with putty.exe."] };
     }
     const bad = lower.includes("x86") || lower.includes("bad");
+    if (lower.includes("quest")) {
+      return {
+        id: "apk2",
+        kind: "apk",
+        sourcePaths: [path],
+        name: "Quest Game",
+        sizeBytes: 423e6,
+        apk: {
+          package: "com.example.questgame", label: "Quest Game", versionName: "1.0.1", versionCode: 1, minSdk: 23, targetSdk: 29, abis: ["arm64-v8a"], isVr: true, obbFiles: [],
+          questPatches: [
+            { id: "openxr-loader", title: "Use the standard OpenXR loader", explanation: "This app ships Meta's OpenXR loader, which only looks for the Quest's own VR system and gives up on the Frame. Frameloader swaps in the open-source Khronos loader, which finds the Frame's SteamVR runtime." },
+            { id: "unity-oculus-check", title: "Skip Unity's Quest-only check", explanation: "Unity's Oculus plugin quits the app when the headset's maker isn't Oculus. This makes that check pass, so the app can start and use OpenXR instead." },
+          ],
+        },
+        issues: [],
+        warnings: [],
+      };
+    }
     return {
       id: "apk1",
       kind: "apk",

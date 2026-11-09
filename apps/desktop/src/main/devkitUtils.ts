@@ -134,6 +134,8 @@ export interface TitleMeta {
   flatscreen?: boolean;
   sizeBytes?: number;
   startCommand?: string;
+  /** Quest compatibility patches applied to the uploaded APK. */
+  questPatches?: string[];
 }
 
 export interface RawTitle {

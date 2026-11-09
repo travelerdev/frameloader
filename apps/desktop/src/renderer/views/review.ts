@@ -1,8 +1,8 @@
 import { formatBytes } from "../../shared/format";
-import type { RuntimeId } from "../../shared/ipc";
+import type { PayloadInfo, RuntimeId } from "../../shared/ipc";
 import { gameIdProblem } from "../../shared/gameid";
 import { h, icon, kindIcon } from "../dom";
-import type { State } from "../state";
+import type { ReviewForm, State } from "../state";
 import { cancelReview, setReviewName, startInstall, updateReview } from "../actions";
 
 export function reviewView(s: State): HTMLElement {
@@ -123,6 +123,7 @@ export function reviewView(s: State): HTMLElement {
       ...blocking.map((b) => h("div", { class: "notice bad" }, b)),
       ...p.warnings.map((w) => h("div", { class: "notice" }, w)),
       runtimeControl,
+      questPatchesControl(p, r),
       advanced,
       h(
         "div",
@@ -136,6 +137,19 @@ export function reviewView(s: State): HTMLElement {
         ),
       ),
     ),
+  );
+}
+
+/** One opt-in switch for every Quest compatibility patch detected in this APK, on by default. */
+function questPatchesControl(p: PayloadInfo, r: ReviewForm): HTMLElement | null {
+  const ids = (p.apk?.questPatches ?? []).map((o) => o.id);
+  if (!ids.length) return null;
+  return h(
+    "div",
+    { class: "field quest-patches" },
+    h("label", { class: "check" }, h("input", { type: "checkbox", id: "quest-patch", checked: r.questPatches.length > 0, onchange: (e: Event) => updateReview({ questPatches: (e.target as HTMLInputElement).checked ? ids : [] }) }), "Patch Quest game for Frame"),
+    h("div", { class: "help" }, "This app was built for Meta Quest and has some libraries in it which will crash immediately on the Frame. We can replace the app launcher, patch code that looks for Quest hardware, and swap out the VR library automatically so that it should at least make it into the game."),
+    h("div", { class: "help" }, "Patching requires re-signing the APK file with Frameloader's developer key, so you may see the developer information change. If your app still crashes after patching, there may be additional changes required - reach out online and we can work through what new patches need to be added."),
   );
 }
 

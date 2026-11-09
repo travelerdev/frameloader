@@ -11,6 +11,7 @@ import { readHead, sniffBinary } from "./binary";
 import { BUNDLE_EXTS, mergeBundle, zipLooksLikeBundle } from "./bundle";
 import { extractTar, TAR_RE } from "./tar";
 import { findApkSet, obbWarnings } from "./apkset";
+import { detectQuestPatches } from "../apk/quest";
 
 export interface Payload {
   info: PayloadInfo;
@@ -77,11 +78,22 @@ interface ApkExtras {
   tempDir?: string;
   notes?: string[];
   warnings?: string[];
+  /** The APK is Frameloader's own re-signed build (a merged bundle). */
+  resigned?: boolean;
 }
 
 async function inspectApkPayload(apkPath: string, obbPaths: string[], extras: ApkExtras = {}): Promise<PayloadInfo> {
   const facts = await inspectApk(apkPath);
   facts.obbFiles = obbPaths.map((p) => basename(p));
+  facts.resigned = !!extras.resigned;
+  let questWarnings: string[] = [];
+  try {
+    const quest = await detectQuestPatches(apkPath);
+    if (quest.offers.length) facts.questPatches = quest.offers;
+    questWarnings = quest.warnings;
+  } catch {
+    /* detection is best effort; the app installs as it is */
+  }
   const size = statSync(apkPath).size + obbPaths.reduce((a, p) => a + statSync(p).size, 0);
   const info: PayloadInfo = {
     id: randomUUID(),
@@ -91,7 +103,7 @@ async function inspectApkPayload(apkPath: string, obbPaths: string[], extras: Ap
     sizeBytes: size,
     apk: facts,
     issues: apkIssues(facts),
-    warnings: [...(extras.notes ?? []), ...(extras.warnings ?? []), ...obbWarnings(facts.obbFiles, facts.package)],
+    warnings: [...(extras.notes ?? []), ...(extras.warnings ?? []), ...obbWarnings(facts.obbFiles, facts.package), ...questWarnings],
   };
   if (!facts.abis.length) info.warnings.push("No native code; should run on any device.");
   payloads.set(info.id, { info, apkPath, obbPaths, tempDir: extras.tempDir });
@@ -107,6 +119,7 @@ async function inspectBundlePayload(bundlePath: string, obbPaths: string[]): Pro
       tempDir: merged.tempDir,
       notes: merged.notes,
       warnings: merged.warnings,
+      resigned: true,
     });
   } catch (e) {
     rmSync(merged.tempDir, { recursive: true, force: true });

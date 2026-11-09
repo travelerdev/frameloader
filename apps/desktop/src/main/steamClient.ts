@@ -98,10 +98,41 @@ function shellQuote(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
-/** JS that finds the devkit title's shortcut and renames it. Waits up to ~8 s for Steam to list it. */
-export function renameJs(gameId: string, directory: string, name: string): string {
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** POSIX single-quoting. Steam runs launch options through bash on SteamOS, so this survives spaces and newlines. */
+export function shellSingleQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+/**
+ * Steam launch options that set `env` for the game: `A='1' B='x y' %command%`.
+ * Steam ignores the <gameid>-env.json that Valve's create-shortcut helper
+ * writes for devkit launches, but it does apply a shortcut's launch options.
+ * Empty when there's nothing to set. Names that aren't valid shell
+ * identifiers are dropped.
+ */
+export function launchOptionsFor(env: Record<string, string>): string {
+  const parts = Object.entries(env)
+    .filter(([k]) => ENV_NAME.test(k))
+    .map(([k, v]) => `${k}=${shellSingleQuote(v)}`);
+  return parts.length ? `${parts.join(" ")} %command%` : "";
+}
+
+/** True for launch options Frameloader wrote (only VAR='value' pairs before %command%), so they can be replaced or cleared. */
+export const OWN_LAUNCH_OPTIONS = String.raw`^\s*(?:[A-Za-z_][A-Za-z0-9_]*='(?:[^']|'\\'')*'\s+)*%command%\s*$`;
+
+/**
+ * JS that finds the devkit title's shortcut, renames it and, when
+ * `launchOptions` is given, sets them ("" clears options Frameloader set
+ * earlier, but leaves ones the user typed in Steam alone). Waits up to ~8 s
+ * for Steam to list the shortcut.
+ */
+export function renameJs(gameId: string, directory: string, name: string, launchOptions?: string): string {
   return `(async () => {
     const gid = ${JSON.stringify(gameId)}, dir = ${JSON.stringify(directory.replace(/\/+$/, ""))}, name = ${JSON.stringify(name)};
+    const launch = ${launchOptions === undefined ? "undefined" : JSON.stringify(launchOptions)};
+    const own = new RegExp(${JSON.stringify(OWN_LAUNCH_OPTIONS)});
     const inside = (p) => { p = String(p || "").trim().replace(/^"|"$/g, ""); return p === dir || p.startsWith(dir + "/"); };
     const details = (appid) => new Promise((ok) => {
       const cached = typeof appDetailsStore !== "undefined" && appDetailsStore.GetAppDetails && appDetailsStore.GetAppDetails(appid);
@@ -124,7 +155,15 @@ export function renameJs(gameId: string, directory: string, name: string): strin
         const before = a.display_name;
         if (before !== name) SteamClient.Apps.SetShortcutName(a.appid, name);
         if (typeof SteamClient.Apps.SetShortcutSortAs === "function") SteamClient.Apps.SetShortcutSortAs(a.appid, name);
-        return { appid: a.appid, before };
+        let launchOptions = "unchanged";
+        if (launch !== undefined) {
+          const d = await details(a.appid);
+          const current = (d && d.strShortcutLaunchOptions) || "";
+          if (launch && current !== launch) { SteamClient.Apps.SetShortcutLaunchOptions(a.appid, launch); launchOptions = "set"; }
+          else if (!launch && current && own.test(current)) { SteamClient.Apps.SetShortcutLaunchOptions(a.appid, ""); launchOptions = "cleared"; }
+          else if (!launch && current) launchOptions = "kept";
+        }
+        return { appid: a.appid, before, launchOptions };
       }
       if (matches.length > 1) return { ambiguous: matches.map((m) => m.display_name) };
       await new Promise((r) => setTimeout(r, 1000));
@@ -133,20 +172,33 @@ export function renameJs(gameId: string, directory: string, name: string): strin
   })()`;
 }
 
-type RenameResult = { appid: number; before: string } | { ambiguous: string[] } | { notFound: true };
+type RenameResult = { appid: number; before: string; launchOptions?: "set" | "cleared" | "kept" | "unchanged" } | { ambiguous: string[] } | { notFound: true };
 
-/** Best effort: a failure here leaves the title installed under Steam's default name. */
-export async function renameDevkitTitle(ssh: SshSession, gameId: string, directory: string, name: string): Promise<boolean> {
+export interface ShortcutOutcome {
+  renamed: boolean;
+  /** False when env vars were asked for but couldn't be put in the launch options. */
+  envApplied: boolean;
+}
+
+/**
+ * Best effort: name the devkit title and put `env` in its launch options. A
+ * failure leaves the title installed under Steam's default name, without env.
+ */
+export async function configureDevkitTitle(ssh: SshSession, gameId: string, directory: string, name: string, env: Record<string, string>): Promise<ShortcutOutcome> {
+  const launch = launchOptionsFor(env);
   try {
-    const r = await steamEval<RenameResult>(ssh, renameJs(gameId, directory, name));
+    const r = await steamEval<RenameResult>(ssh, renameJs(gameId, directory, name, launch));
     if (r && "appid" in r) {
       activity.info(`Renamed "${r.before}" to "${name}" in the Steam library`);
-      return true;
+      if (r.launchOptions === "set") activity.info(`Set Steam launch options: ${launch}`);
+      else if (r.launchOptions === "cleared") activity.info("Cleared the environment variables Frameloader set before");
+      else if (r.launchOptions === "kept") activity.info("Left the launch options you set in Steam as they are");
+      return { renamed: true, envApplied: true };
     }
     if (r && "ambiguous" in r) activity.push("err", `Couldn't rename: several shortcuts point at ${directory} (${r.ambiguous.join(", ")})`);
     else activity.push("err", `Couldn't rename: Steam didn't list a shortcut for ${gameId} yet`);
   } catch (e) {
     activity.push("err", `Couldn't rename the title in Steam: ${(e as Error).message}`);
   }
-  return false;
+  return { renamed: false, envApplied: !launch };
 }

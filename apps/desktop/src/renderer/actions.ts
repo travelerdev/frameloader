@@ -123,8 +123,9 @@ function reviewFor(p: PayloadInfo, runtimes: { id: RuntimeId; available: boolean
     launchArgs: "",
     env: [],
     flatscreen: p.apk ? !p.apk.isVr : false,
-    launchAfter: true,
+    launchAfter: false,
     advancedOpen: false,
+    questPatches: p.apk?.questPatches?.map((o) => o.id) ?? [],
   };
 }
 
@@ -163,6 +164,7 @@ export function updateReview(patch: Partial<ReviewForm>): void {
   store.set((s) => (s.review ? { review: { ...s.review, ...patch } } : {}));
 }
 
+/** Turn one Quest compatibility patch on or off, from the current state (not a render-time copy). */
 export function setReviewName(name: string): void {
   store.set((s) => {
     if (!s.review) return {};
@@ -191,6 +193,7 @@ export async function startInstall(): Promise<void> {
     env: Object.fromEntries(review.env.filter((e) => e.k.trim()).map((e) => [e.k.trim(), e.v])),
     flatscreen: review.flatscreen,
     launchAfter: review.launchAfter,
+    questPatches: review.questPatches,
   };
   const steps = Object.fromEntries(STEPS.map((s) => [s, { step: s, status: "pending" } as InstallProgress])) as Record<InstallStep, InstallProgress>;
   requestScrollTop();

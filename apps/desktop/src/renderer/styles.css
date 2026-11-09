@@ -220,3 +220,5 @@ details.advanced .stack { margin-top: 12px; padding-top: 12px; border-top: 1px s
 .update-bar svg { color: var(--accent); }
 .main { position: relative; }
 .btn.corner { position: absolute; top: 12px; right: 16px; }
+
+.quest-patches .help { padding-left: 24px; margin-top: 4px; }

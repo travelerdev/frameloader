@@ -33,7 +33,19 @@ For Android apps, Frameloader reads the manifest to pick a name and icon, refuse
 
 Lepton installs a title with a plain `adb install <one apk>` every time it launches (its "baked" container data is wiped on exit), so there is nowhere for the splits of an app bundle to live. Frameloader therefore does what APKEditor/antisplit tools do, in-process and without Java: it unpacks the bundle, keeps the base plus the `arm64-v8a`, density and language splits (other ABIs are dropped), merges their files and `resources.arsc` tables into one APK, clears the "needs splits" markers in the manifest, and re-signs the result with APK Signature Scheme v2 using a key it generates once in its user-data folder. The app keeps its original package name and version, but its signature changes, so anything that checks its signing certificate (Play licensing, some SafetyNet-style checks) will notice.
 
-While it has the APK open, Frameloader also applies one Lepton compatibility patch: Lepton ships no clipboard service, so `getSystemService(CLIPBOARD_SERVICE)` returns null and any app that registers a clip-changed listener on it crashes (every SDL2/SDL3 app does so in `SDLActivity.onCreate`). The merge skips those `ClipboardManager.addPrimaryClipChangedListener` / `removePrimaryClipChangedListener` calls in the bytecode (void calls become nops, so the dex still verifies); with no clipboard there's nothing to listen to anyway. The review screen says when this happened. Plain `.apk` drops are uploaded untouched.
+While it has the APK open, Frameloader also applies one Lepton compatibility patch: Lepton ships no clipboard service, so `getSystemService(CLIPBOARD_SERVICE)` returns null and any app that registers a clip-changed listener on it crashes (every SDL2/SDL3 app does so in `SDLActivity.onCreate`). The merge skips those `ClipboardManager.addPrimaryClipChangedListener` / `removePrimaryClipChangedListener` calls in the bytecode (void calls become nops, so the dex still verifies); with no clipboard there's nothing to listen to anyway. The review screen says when this happened. Plain `.apk` drops are uploaded untouched unless you turn on a Quest compatibility patch.
+
+### Quest compatibility patches
+
+Many apps built for Meta Quest install fine but quit as soon as they start. When Frameloader inspects an APK it looks for the three causes it knows how to fix, offers them on the review screen (on by default), and applies the ones you leave on while uploading. A patched plain `.apk` is re-signed with Frameloader's own key, the same as a merged bundle.
+
+- **Meta's OpenXR loader.** Apps built with Meta's mobile SDK (many Unreal apps, and engines like Tea For God's) bundle a fork of `libopenxr_loader.so` that only knows how to find Meta's runtime (`com.oculus.systemdriver`), so it logs "Failed to find default runtime". Frameloader swaps in the [Khronos OpenXR loader](https://github.com/KhronosGroup/OpenXR-SDK-Source) (Apache-2.0, `apps/desktop/vendor/openxr-loader`), which also reads `/vendor/etc/openxr/1/active_runtime.json`, where Lepton registers SteamVR.
+- **Unity's Oculus check.** Unity's Oculus XR plugin quits with "attempting to run on a non-Oculus device" unless `Build.MANUFACTURER` contains "oculus". Lepton's `lepton.prop` sets `ro.product.manufacturer=Valve` after any extra props you inject, so spoofing the property doesn't work; Frameloader rewrites `OculusUnity.getIsOnOculusHardware()` in the dex to return true instead.
+- **OVRPlugin's runtime check.** Meta's OVRPlugin (OpenXR build) refuses runtimes that aren't Meta's unless its "support non-Oculus runtime" flag is set, and Unity always passes 0. Frameloader flips the one instruction that reads that flag in `libOVRPlugin.so`.
+
+Apps whose OVRPlugin is the older VrApi build can't be fixed this way: VrApi aborts without Meta's system software. Frameloader says so on the review screen and doesn't offer the Unity patch for them.
+
+Environment variables from the review screen are set as the title's Steam launch options (`NAME='value' %command%`), because Steam ignores the `<gameid>-env.json` sidecar for devkit launches.
 
 ## Using it
 
@@ -121,5 +133,6 @@ Locally: `pnpm preview:web` runs the built site in the Workers runtime, and `pnp
 - Valve's [SteamOS Devkit Client](https://gitlab.steamos.cloud/devkit/steamos-devkit) (MIT) for the device-side scripts and the protocol.
 - [Lepton](https://gitlab.steamos.cloud/frame-public/lepton) (MIT) for documenting how Android titles are launched.
 - [Frame Control](https://github.com/saphid/frame-control) (MIT) for field notes that verified each runtime on real hardware.
+- The [Khronos OpenXR loader](https://github.com/KhronosGroup/OpenXR-SDK-Source) (Apache-2.0), shipped unmodified for the Quest loader patch.
 
 MIT licensed, provided as is with no warranty; see the [terms of use](https://www.frameloader.com/terms). If Frameloader saves you some time, you can [buy me a coffee](https://buymeacoffee.com/travelerdev).

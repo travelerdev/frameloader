@@ -45,6 +45,47 @@ export function readRawEntries(path: string, want?: (name: string) => boolean): 
   });
 }
 
+/**
+ * Visit every entry of a zip in order, one at a time, without inflating, so a
+ * multi-gigabyte APK never sits in memory whole. Directory entries are skipped.
+ * `visit` may be async; the next entry is read once it settles.
+ */
+export function forEachRawEntry(path: string, visit: (e: RawEntry) => void | Promise<void>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(path, { lazyEntries: true }, (err, zip) => {
+      if (err || !zip) return reject(err ?? new Error("not a zip"));
+      let failed = false;
+      const fail = (e: unknown) => {
+        if (failed) return;
+        failed = true;
+        zip.close();
+        reject(e);
+      };
+      zip.on("error", fail);
+      zip.on("end", () => !failed && resolve());
+      zip.on("entry", (e) => {
+        if (e.fileName.endsWith("/")) return zip.readEntry();
+        if (e.compressionMethod !== 0 && e.compressionMethod !== 8) return fail(new Error(`${e.fileName} uses an unsupported zip compression method (${e.compressionMethod}).`));
+        const onStream = (err2: Error | null, stream?: NodeJS.ReadableStream) => {
+          if (err2 || !stream) return fail(err2 ?? new Error("zip read failed"));
+          const chunks: Buffer[] = [];
+          stream.on("data", (c: Buffer) => chunks.push(c));
+          stream.on("error", fail);
+          stream.on("end", () => {
+            const raw = { name: e.fileName, method: e.compressionMethod, crc32: e.crc32, compressedSize: e.compressedSize, uncompressedSize: e.uncompressedSize, raw: Buffer.concat(chunks) };
+            Promise.resolve()
+              .then(() => visit(raw))
+              .then(() => zip.readEntry(), fail);
+          });
+        };
+        if (e.compressionMethod === 8) zip.openReadStream(e, { decrypt: null, decompress: false, start: null, end: null }, onStream);
+        else zip.openReadStream(e, onStream);
+      });
+      zip.readEntry();
+    });
+  });
+}
+
 /** Inflate one raw entry. */
 export function inflateEntry(e: RawEntry): Buffer {
   return e.method === 0 ? e.raw : inflateRawSync(e.raw);
