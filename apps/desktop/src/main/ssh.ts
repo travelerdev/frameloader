@@ -1,5 +1,5 @@
 // Thin wrapper over ssh2: one connection, exec with captured output, SFTP and tar-stream uploads.
-import { Client, type ConnectConfig, type SFTPWrapper } from "ssh2";
+import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper } from "ssh2";
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { activity } from "./activity";
@@ -209,63 +209,56 @@ export class SshSession {
     return this.remoteTar;
   }
 
-  private putDirTar(entries: TarEntry[], remoteDir: string, total: number, onProgress?: (sent: number, total: number) => void): Promise<void> {
+  private async putDirTar(entries: TarEntry[], remoteDir: string, total: number, onProgress?: (sent: number, total: number) => void): Promise<void> {
     // Every file gets 0755, as the SFTP path does: builds unpacked from zips
     // often lose their exec bits. --no-same-owner keeps files owned by the user.
     const cmd = `mkdir -p ${shq(remoteDir)} && exec tar --no-same-owner -x -f - -C ${shq(remoteDir)}`;
     activity.push("cmd", `${cmd}  (${entries.length} entries streamed)`);
-    return new Promise((resolve, reject) => {
-      this.client.exec(cmd, (err, ch) => {
-        if (err) return reject(new SshError(err.message));
-        let stderr = "";
-        let closed = false;
-        ch.on("data", () => {});
-        ch.on("error", () => {});
-        ch.stderr.on("data", (c: Buffer) => {
-          stderr = (stderr + c.toString("utf8")).slice(-4000);
-        });
-        const exit = new Promise<number | null>((res) =>
-          ch.on("close", (code: number | null) => {
-            closed = true;
-            res(code);
-          }),
-        );
-        const waitDrain = () =>
-          new Promise<void>((res) => {
-            const done = () => {
-              ch.off("drain", done);
-              ch.off("close", done);
-              res();
-            };
-            ch.on("drain", done).on("close", done);
-          });
-        let sent = 0;
-        const pump = async () => {
-          for await (const chunk of tarChunks(entries, { fileMode: 0o755, dirMode: 0o755, onFileBytes: (n) => onProgress?.((sent += n), total) })) {
-            if (closed) return false;
-            if (!ch.write(chunk)) await waitDrain();
-          }
-          ch.end();
-          return true;
-        };
-        pump().then(
-          async (complete) => {
-            const code = await exit;
-            if (code === 0 && complete) {
-              onProgress?.(total, total);
-              return resolve();
-            }
-            const why = stderr.trim().split("\n").slice(-3).join(" ") || `tar exited ${code ?? "on a signal"}`;
-            activity.push("err", why);
-            reject(new SshError(`upload failed: ${why}`));
-          },
-          (e: Error) => {
-            ch.close();
-            reject(new SshError(`upload failed: ${e.message}`));
-          },
-        );
-      });
+    const ch = await new Promise<ClientChannel>((resolve, reject) => this.client.exec(cmd, (err, c) => (err ? reject(new SshError(err.message)) : resolve(c))));
+
+    let stderr = "";
+    let closed = false;
+    ch.on("data", () => {}); // tar prints nothing on success; keep stdout flowing regardless
+    ch.on("error", () => {}); // writes after the far side exits; the exit code reports that
+    ch.stderr.on("data", (c: Buffer) => {
+      stderr = (stderr + c.toString("utf8")).slice(-4000);
     });
+    const exit = new Promise<number | null>((resolve) =>
+      ch.once("close", (code: number | null) => {
+        closed = true;
+        resolve(code);
+      }),
+    );
+    const drainedOrClosed = () =>
+      new Promise<void>((resolve) => {
+        const done = () => {
+          ch.off("drain", done).off("close", done);
+          resolve();
+        };
+        ch.on("drain", done).on("close", done);
+      });
+
+    let sent = 0;
+    let complete = false;
+    try {
+      for await (const chunk of tarChunks(entries, { fileMode: 0o755, dirMode: 0o755, onFileBytes: (n) => onProgress?.((sent += n), total) })) {
+        if (closed) break;
+        if (!ch.write(chunk)) await drainedOrClosed();
+      }
+      complete = !closed;
+      ch.end();
+    } catch (e) {
+      ch.close();
+      throw new SshError(`upload failed: ${(e as Error).message}`);
+    }
+
+    const code = await exit;
+    if (code !== 0 || !complete) {
+      const why = stderr.trim().split("\n").slice(-3).join(" ") || `tar exited ${code ?? "on a signal"}`;
+      activity.push("err", why);
+      throw new SshError(`upload failed: ${why}`);
+    }
+    onProgress?.(total, total);
   }
 
   private async putDirSftp(entries: TarEntry[], remoteDir: string, total: number, onProgress?: (sent: number, total: number) => void): Promise<void> {

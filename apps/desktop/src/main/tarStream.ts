@@ -79,19 +79,23 @@ function padding(size: number): Buffer {
   return rem ? Buffer.alloc(BLOCK - rem) : Buffer.alloc(0);
 }
 
+/** Printable-ASCII stand-in for a name, for the ustar field a PAX header overrides. */
+function asciiName(name: string): string {
+  return name.replace(/[^\x20-\x7e]/g, "_").slice(0, 100);
+}
+
 /** Headers for one entry, with a PAX extended header first when ustar can't hold it. */
-export function entryHeaders(e: TarEntry, mode: number): Buffer {
+function entryHeaders(e: TarEntry, mode: number): Buffer {
   const name = e.type === "dir" ? e.rel + "/" : e.rel;
   const mtime = Math.max(0, Math.floor(e.mtimeMs / 1000));
-  const ascii = /^[\x20-\x7e]*$/.test(name);
+  const bigFile = e.size > USTAR_MAX_SIZE;
   const records: string[] = [];
-  if (!ascii || Buffer.byteLength(name) > 100) records.push(paxRecord("path", name));
-  if (e.size > USTAR_MAX_SIZE) records.push(paxRecord("size", String(e.size)));
-  const main = header(ascii ? name.slice(0, 100) : name.replace(/[^\x20-\x7e]/g, "_").slice(0, 100), e.type === "dir" ? "5" : "0", e.size > USTAR_MAX_SIZE ? 0 : e.size, mode, mtime);
+  if (asciiName(name) !== name) records.push(paxRecord("path", name));
+  if (bigFile) records.push(paxRecord("size", String(e.size)));
+  const main = header(asciiName(name), e.type === "dir" ? "5" : "0", bigFile ? 0 : e.size, mode, mtime);
   if (!records.length) return main;
   const pax = Buffer.from(records.join(""), "utf8");
-  const paxName = ("PaxHeaders/" + e.rel.replace(/[^\x20-\x7e]/g, "_")).slice(0, 100);
-  return Buffer.concat([header(paxName, "x", pax.length, 0o644, mtime), pax, padding(pax.length), main]);
+  return Buffer.concat([header(asciiName("PaxHeaders/" + e.rel), "x", pax.length, 0o644, mtime), pax, padding(pax.length), main]);
 }
 
 /**
